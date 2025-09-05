@@ -35,12 +35,12 @@ def main():
     ]
 
     for parte in historia:
-        typewriter(parte, delay=0.03, console=console, style="bold green")
+        typewriter(parte, delay=0.05, console=console, style="bold green")
         # pequeña pausa entre párrafos
         time.sleep(0.6)
 
 
-def typewriter(text, delay=0.03, console=None, style=None):
+def typewriter(text, delay=0.05, console=None, style=None):
     """Imprime `text` carácter por carácter para simular que alguien lo escribe.
 
     Args:
