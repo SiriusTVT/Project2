@@ -2,6 +2,33 @@ from rich.console import Console
 import time
 import sys
 
+# velocidad por defecto para el efecto de "typewriter" (segundos por carácter)
+# se puede ajustar con la función `seleccionar_velocidad`
+TEXT_SPEED = 0.03
+
+
+def seleccionar_velocidad(console):
+    """Pregunta al usuario por la velocidad de texto y ajusta TEXT_SPEED.
+
+    Retorna el valor numérico de la velocidad seleccionada.
+    """
+    global TEXT_SPEED
+    console.print("Elige la velocidad de texto: [b]rápida[/] (r), [b]normal[/] (n), [b]lenta[/] (l)")
+    try:
+        resp = input("Velocidad (r/n/l, por defecto n): ").strip().lower()
+    except (KeyboardInterrupt, EOFError):
+        console.print("Entrada interrumpida. Usando velocidad por defecto.", style="yellow")
+        return TEXT_SPEED
+    if resp.startswith('r'):
+        TEXT_SPEED = 0.01
+    elif resp.startswith('l'):
+        TEXT_SPEED = 0.06
+    else:
+        TEXT_SPEED = 0.03
+
+    console.print(f"Velocidad seleccionada: {TEXT_SPEED}s por carácter")
+    return TEXT_SPEED
+
 class Personaje:
     def __init__(self, nombre, clase=None, nivel=1):
         """Crea un personaje con nombre, clase, nivel y calcula salud y daño según la clase.
@@ -59,17 +86,20 @@ def main():
     juego.run()
 
 
-def typewriter(text, delay=0.03, console=None, style=None):
+def typewriter(text, delay=None, console=None, style=None):
     """Imprime `text` carácter por carácter para simular que alguien lo escribe.
 
     Args:
         text (str): cadena a imprimir.
-        delay (float): segundos entre cada carácter.
+        delay (float|None): segundos entre cada carácter. Si es None se usa `TEXT_SPEED`.
         console (rich.console.Console|None): consola para imprimir (si no se pasa, se crea una nueva).
         style (str|None): estilo para pasar a console.print.
     """
     if console is None:
         console = Console()
+    # usar la velocidad global si no se pasa explícitamente
+    if delay is None:
+        delay = TEXT_SPEED
     # imprimir carácter a carácter sin saltos hasta terminar la línea
     for ch in text:
         # rich.Console.print acepta end, lo usamos para no añadir newline hasta el final
@@ -104,9 +134,12 @@ def mostrar_intro(console):
 
     Retorna (nombre, clase) si el jugador acepta, o None si decide no jugar / interrumpe.
     """
+    # permitir al jugador seleccionar la velocidad de texto antes de mostrar la intro
+    velocidad = seleccionar_velocidad(console)
     for parte in get_intro_lines():
-        typewriter(parte, delay=0.03, console=console, style="bold green")
-        time.sleep(0.45)
+        typewriter(parte, console=console, style="bold green")
+        # pausa entre párrafos proporcional a la velocidad (más rápida -> menos pausa)
+        time.sleep(max(0.15, 0.45 * (velocidad / TEXT_SPEED)))
 
     # preguntar si el jugador está listo
     try:
