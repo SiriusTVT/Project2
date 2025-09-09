@@ -250,6 +250,14 @@ def mostrar_intro(console):
     # permitir al jugador seleccionar la velocidad de texto antes de mostrar la intro
     velocidad = seleccionar_velocidad(console)
 
+    # opción para omitir la introducción narrativa
+    try:
+        omitir = input("¿Deseas omitir la introducción narrativa? (s/n): ").strip().lower()
+    except (KeyboardInterrupt, EOFError):
+        console.print("Entrada interrumpida. Saliendo...", style="bold red")
+        return None
+    skip_intro = omitir.startswith('s')
+
     # intentar reproducir música de fondo (INTRO-1.wav) después de seleccionar la velocidad
     audio_source = None
     _oal_quit = None
@@ -264,31 +272,43 @@ def mostrar_intro(console):
             audio_source = oalOpen(audio_path)
             if audio_source is not None:
                 audio_source.play()
-                console.print("[dim]Reproduciendo música de fondo...[/]")
         else:
             console.print(f"[yellow]Archivo de audio no encontrado: {audio_path}[/]")
     except Exception as e:
-        # no fallar si openal no está instalado o hay problema con audio
-        console.print(f"[yellow]Audio no disponible ({e}). Continuando sin música.[/]")
+        # no fallar si openal no está instalado o hay problema con audio; intentar winsound en Windows
+        try:
+            if sys.platform.startswith("win"):
+                import winsound
+                audio_path = os.path.join(os.path.dirname(__file__), "Music", "INTRO-1.wav")
+                if os.path.exists(audio_path):
+                    winsound.PlaySound(audio_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+                else:
+                    console.print(f"[yellow]Archivo de audio no encontrado: {audio_path}[/]")
+            else:
+                console.print(f"[yellow]Audio no disponible ({e}). Continuando sin música.[/]")
+        except Exception:
+            console.print(f"[yellow]Audio no disponible ({e}). Continuando sin música.[/]")
 
-    # (sin audio) continuar con la introducción
-    for parte in get_intro_lines():
-        typewriter(parte, console=console, style="bold green")
-        # pausa entre párrafos proporcional a la velocidad (más rápida -> menos pausa)
-        time.sleep(max(0.15, 0.45 * (velocidad / TEXT_SPEED)))
+    if not skip_intro:
+        # (sin audio) continuar con la introducción
+        for parte in get_intro_lines():
+            typewriter(parte, console=console, style="bold green")
+            # pausa entre párrafos proporcional a la velocidad (más rápida -> menos pausa)
+            time.sleep(max(0.15, 0.45 * (velocidad / TEXT_SPEED)))
 
-    # preguntar si el jugador está listo
-    try:
-        respuesta = input("¿Estás listo para la aventura? (s/n): ").strip().lower()
-    except (KeyboardInterrupt, EOFError):
-        console.print("Entrada interrumpida. Saliendo...", style="bold red")
-        return None
-
-    if not respuesta or not respuesta.startswith('s'):
-        console.print("No estás listo para la aventura. Hasta la próxima.", style="yellow")
-        return None
-
-    console.print("¡Perfecto! La aventura comienza...", style="bold magenta")
+    # preguntar si el jugador está listo (si no se omitió la intro)
+    if not skip_intro:
+        try:
+            respuesta = input("¿Estás listo para la aventura? (s/n): ").strip().lower()
+        except (KeyboardInterrupt, EOFError):
+            console.print("Entrada interrumpida. Saliendo...", style="bold red")
+            return None
+        if not respuesta or not respuesta.startswith('s'):
+            console.print("No estás listo para la aventura. Hasta la próxima.", style="yellow")
+            return None
+        console.print("¡Perfecto! La aventura comienza...", style="bold magenta")
+    else:
+        console.print("[dim]Introducción omitida. Pasando a la configuración del personaje...[/]")
 
     # pedir datos del aventurero (la música sigue hasta completar la configuración)
     try:
@@ -393,6 +413,9 @@ class Juego:
         self.bg_audio_source = None
         self.oal_quit = None
         self.winsound_used = False
+    # referencia para sonido ambiente del río
+        self.river_src = None
+        self.river_winsound = False
 
     def run(self):
         self.console.print("[bold magenta]¡Bienvenido a Adventure Time versión texto![/]")
@@ -419,6 +442,76 @@ class Juego:
             if not siguiente:
                 self.console.print("[red]Opción no válida[/]")
                 continue
+
+            # Si estamos en la escena del río y se eligió "Cruzar el río", reproducir CROSSRIVER-1.wav
+            try:
+                if self.escena_actual == "rio":
+                    try:
+                        idx = int(eleccion) - 1
+                        claves = list(escena.opciones.keys())
+                        if 0 <= idx < len(claves):
+                            opcion_texto = claves[idx].lower()
+                        else:
+                            opcion_texto = None
+                    except Exception:
+                        opcion_texto = None
+
+                    if opcion_texto and "cruzar" in opcion_texto:
+                        cr_path = os.path.join(os.path.dirname(__file__), "Sound Effects", "CROSSRIVER-1.wav")
+                        if os.path.exists(cr_path):
+                            # Preferir openal si hay bg con openal; evitar interrumpir winsound de fondo
+                            if self.bg_audio_source is not None:
+                                try:
+                                    from openal import oalOpen
+                                    cr_src = oalOpen(cr_path)
+                                    if cr_src is not None:
+                                        cr_src.play()
+                                except Exception:
+                                    pass
+                            else:
+                                if sys.platform.startswith("win") and not self.winsound_used:
+                                    try:
+                                        import winsound
+                                        winsound.PlaySound(cr_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+                                    except Exception:
+                                        try:
+                                            from openal import oalOpen
+                                            cr_src = oalOpen(cr_path)
+                                            if cr_src is not None:
+                                                cr_src.play()
+                                        except Exception:
+                                            pass
+                                else:
+                                    try:
+                                        from openal import oalOpen
+                                        cr_src = oalOpen(cr_path)
+                                        if cr_src is not None:
+                                            cr_src.play()
+                                    except Exception:
+                                        pass
+            except Exception:
+                pass
+
+            # Si estamos saliendo del río, detener el ambiente del río
+            try:
+                if self.escena_actual == "rio" and siguiente != "rio":
+                    # detener openal si existe
+                    try:
+                        if self.river_src is not None:
+                            self.river_src.stop()
+                    except Exception:
+                        pass
+                    self.river_src = None
+                    # detener winsound si se usó para el río
+                    if self.river_winsound and sys.platform.startswith("win"):
+                        try:
+                            import winsound
+                            winsound.PlaySound(None, 0)
+                        except Exception:
+                            pass
+                    self.river_winsound = False
+            except Exception:
+                pass
 
             # Reproducir sonido de selección al elegir una opción válida
             try:
@@ -460,7 +553,7 @@ class Juego:
             except Exception:
                 pass
 
-            # Si el siguiente estado es 'rio', reproducir sonido de río
+            # Si el siguiente estado es 'rio', reproducir sonido de río y guardar referencia
             try:
                 if siguiente == "rio":
                     river_path = os.path.join(os.path.dirname(__file__), "Sound Effects", "RIVER-1.wav")
@@ -470,21 +563,27 @@ class Juego:
                             from openal import oalOpen
                             r_src = oalOpen(river_path)
                             if r_src is not None:
-                                # reducir volumen al 70%
+                                # reducir volumen al 20%
                                 try:
-                                    r_src.set_gain(0.7)
+                                    r_src.set_gain(0.2)
                                 except Exception:
                                     try:
-                                        r_src.gain = 0.7
+                                        r_src.gain = 0.2
                                     except Exception:
                                         pass
                                 r_src.play()
+                                # guardar referencia para poder detener luego
+                                self.river_src = r_src
+                                self.river_winsound = False
                         except Exception:
                             # En Windows, si NO se usa winsound para la música, usar winsound
                             if sys.platform.startswith("win") and not self.winsound_used:
                                 try:
                                     import winsound
                                     winsound.PlaySound(river_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+                                    # marcar que el río usa winsound para luego poder detenerlo
+                                    self.river_src = None
+                                    self.river_winsound = True
                                 except Exception:
                                     pass
             except Exception:
@@ -494,8 +593,24 @@ class Juego:
             if siguiente.startswith("final"):
                 self.console.print("\n[bold red]--- FIN DEL JUEGO ---[/]\n")
                 self.escenas[siguiente].mostrar(self.console)
-                # detener música de fondo si existe
+                # detener música de fondo si existe y ambiente del río si estuviera activo
                 try:
+                    # río (openal)
+                    try:
+                        if self.river_src is not None:
+                            self.river_src.stop()
+                    except Exception:
+                        pass
+                    self.river_src = None
+                    # río (winsound)
+                    if self.river_winsound and sys.platform.startswith("win"):
+                        try:
+                            import winsound
+                            winsound.PlaySound(None, 0)
+                        except Exception:
+                            pass
+                    self.river_winsound = False
+
                     if self.bg_audio_source:
                         self.bg_audio_source.stop()
                     if self.oal_quit:
