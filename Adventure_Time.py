@@ -326,7 +326,6 @@ def mostrar_intro(console):
             try:
                 import winsound
                 if os.path.exists(select_rel):
-                    console.print(f"[dim]Reproduciendo efecto de selección (winsound): {select_rel}[/]")
                     winsound.PlaySound(select_rel, winsound.SND_FILENAME | winsound.SND_ASYNC)
                 else:
                     console.print(f"[yellow]Archivo de sonido no encontrado: {select_rel}[/]")
@@ -341,7 +340,6 @@ def mostrar_intro(console):
                     sel_src = oalOpen(select_rel)
                     if sel_src is not None:
                         sel_src.play()
-                        console.print(f"[dim]Reproduciendo efecto de selección (openal): {select_rel}[/]")
                 except Exception:
                     console.print(f"[yellow]No se pudo reproducir el efecto con openal: {select_rel}[/]")
             else:
@@ -421,6 +419,46 @@ class Juego:
             if not siguiente:
                 self.console.print("[red]Opción no válida[/]")
                 continue
+
+            # Reproducir sonido de selección al elegir una opción válida
+            try:
+                sfx_path = os.path.join(os.path.dirname(__file__), "Sound Effects", "SELECT3-1.wav")
+                if os.path.exists(sfx_path):
+                    # Si la música de fondo está con openal, usar openal para el SFX
+                    if self.bg_audio_source is not None:
+                        try:
+                            from openal import oalOpen
+                            sfx_src = oalOpen(sfx_path)
+                            if sfx_src is not None:
+                                sfx_src.play()
+                        except Exception:
+                            pass
+                    else:
+                        # Si estamos en Windows y NO estamos usando winsound para el bg, usar winsound para el SFX
+                        if sys.platform.startswith("win") and not self.winsound_used:
+                            try:
+                                import winsound
+                                winsound.PlaySound(sfx_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+                            except Exception:
+                                # Intentar openal como alternativa
+                                try:
+                                    from openal import oalOpen
+                                    sfx_src = oalOpen(sfx_path)
+                                    if sfx_src is not None:
+                                        sfx_src.play()
+                                except Exception:
+                                    pass
+                        else:
+                            # En otros casos, intentar openal (para no interrumpir winsound de fondo)
+                            try:
+                                from openal import oalOpen
+                                sfx_src = oalOpen(sfx_path)
+                                if sfx_src is not None:
+                                    sfx_src.play()
+                            except Exception:
+                                pass
+            except Exception:
+                pass
 
             # Si la escena es un final, terminar
             if siguiente.startswith("final"):
