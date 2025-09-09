@@ -244,7 +244,6 @@ def mostrar_intro(console):
             try:
                 import winsound
                 if os.path.exists(select_rel):
-                    console.print(f"[dim]Reproduciendo efecto de selección (winsound): {select_rel}[/]")
                     winsound.PlaySound(select_rel, winsound.SND_FILENAME | winsound.SND_ASYNC)
                 else:
                     console.print(f"[yellow]Archivo de sonido no encontrado: {select_rel}[/]")
@@ -259,7 +258,6 @@ def mostrar_intro(console):
                     sel_src = oalOpen(select_rel)
                     if sel_src is not None:
                         sel_src.play()
-                        console.print(f"[dim]Reproduciendo efecto de selección (openal): {select_rel}[/]")
                 except Exception:
                     console.print(f"[yellow]No se pudo reproducir el efecto con openal: {select_rel}[/]")
             else:
