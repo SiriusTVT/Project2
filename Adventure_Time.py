@@ -8,6 +8,34 @@ import os
 TEXT_SPEED = 0.03
 
 
+def _play_sfx(filepath):
+    """Reproduce un efecto de sonido corto de forma no bloqueante.
+
+    Intenta OpenAL primero; si falla y es Windows, usa winsound.
+    """
+    try:
+        from openal import oalOpen
+        if os.path.exists(filepath):
+            try:
+                src = oalOpen(filepath)
+                if src is not None:
+                    src.play()
+                    return True
+            except Exception:
+                pass
+    except Exception:
+        pass
+    # Fallback Windows
+    try:
+        if sys.platform.startswith("win") and os.path.exists(filepath):
+            import winsound
+            winsound.PlaySound(filepath, winsound.SND_FILENAME | winsound.SND_ASYNC)
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def seleccionar_velocidad(console):
     """Pregunta al usuario por la velocidad de texto y ajusta TEXT_SPEED.
 
@@ -95,11 +123,15 @@ def combate(jugador):
         console.print("4. Curarse (+15 salud)")
         accion = input("Acción (1-4): ").strip()
         if accion == "1":
+            # Efecto de espada
+            _play_sfx(os.path.join(os.path.dirname(__file__), "Player Effects", "SWORD-1.wav"))
             danio = jugador.danio
             console.print(f"Atacas y haces [yellow]{danio}[/] de daño.")
             enemigo.salud -= danio
         elif accion == "2":
             if jugador.poder_usos > 0:
+                # Poder especial también usa efecto de espada
+                _play_sfx(os.path.join(os.path.dirname(__file__), "Player Effects", "SWORD-1.wav"))
                 danio = jugador.danio + 10
                 console.print(f"Usas tu poder especial '{jugador.poder}' y haces [yellow]{danio}[/] de daño!")
                 enemigo.salud -= danio
@@ -107,6 +139,8 @@ def combate(jugador):
             else:
                 console.print("[dim]Ya no puedes usar tu poder especial.[/]")
         elif accion == "3":
+            # Efecto de escudo al defender
+            _play_sfx(os.path.join(os.path.dirname(__file__), "Player Effects", "SHIELD-1.wav"))
             console.print("Te preparas para defenderte. El daño recibido se reduce a la mitad este turno.")
             defensa = True
         elif accion == "4":
@@ -134,6 +168,8 @@ def combate(jugador):
         time.sleep(0.5)
     if jugador.salud > 0:
         console.print("\n[bold green]¡Has vencido a la bestia![/]")
+        # reproducir sonido de victoria
+        _play_sfx(os.path.join(os.path.dirname(__file__), "Sound Effects", "WINBATTLE-1.wav"))
     else:
         console.print("\n[bold red]La bestia te ha derrotado...[/]")
     if jugador.salud <= 0:
