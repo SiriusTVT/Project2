@@ -413,9 +413,12 @@ class Juego:
         self.bg_audio_source = None
         self.oal_quit = None
         self.winsound_used = False
-    # referencia para sonido ambiente del río
+        # referencia para sonido ambiente del río
         self.river_src = None
         self.river_winsound = False
+        # referencias para música de combate
+        self.fight_src = None
+        self.fight_winsound = False
 
     def run(self):
         self.console.print("[bold magenta]¡Bienvenido a Adventure Time versión texto![/]")
@@ -426,7 +429,88 @@ class Juego:
             # Acción especial de la escena (si tiene)
             siguiente_accion = None
             if escena.accion:
+                # Si vamos a entrar en combate, cambiar a música de pelea
+                was_fight = (self.escena_actual == "combate")
+                if was_fight:
+                    try:
+                        # detener música de aventura si está con openal
+                        if self.bg_audio_source is not None:
+                            try:
+                                self.bg_audio_source.stop()
+                            except Exception:
+                                pass
+                        # reproducir música de pelea
+                        fight_path = os.path.join(os.path.dirname(__file__), "Music", "FIGHT-1.wav")
+                        if os.path.exists(fight_path):
+                            # preferir openal si el bg usa openal
+                            if self.bg_audio_source is not None:
+                                try:
+                                    from openal import oalOpen
+                                    f_src = oalOpen(fight_path)
+                                    if f_src is not None:
+                                        f_src.play()
+                                        self.fight_src = f_src
+                                        self.fight_winsound = False
+                                except Exception:
+                                    pass
+                            else:
+                                # si bg era winsound, usar winsound para pelea
+                                if sys.platform.startswith("win") and self.winsound_used:
+                                    try:
+                                        import winsound
+                                        winsound.PlaySound(fight_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+                                        self.fight_src = None
+                                        self.fight_winsound = True
+                                    except Exception:
+                                        # intentar openal como fallback
+                                        try:
+                                            from openal import oalOpen
+                                            f_src = oalOpen(fight_path)
+                                            if f_src is not None:
+                                                f_src.play()
+                                                self.fight_src = f_src
+                                                self.fight_winsound = False
+                                        except Exception:
+                                            pass
+                    except Exception:
+                        pass
+
+                # ejecutar acción de la escena
                 resultado = escena.accion(self.jugador)
+
+                # Si veníamos de combate, detener música de pelea y reanudar aventura
+                if was_fight:
+                    try:
+                        # detener música de pelea
+                        try:
+                            if self.fight_src is not None:
+                                self.fight_src.stop()
+                        except Exception:
+                            pass
+                        self.fight_src = None
+                        # si la pelea usó winsound, reanudar aventura con winsound
+                        if self.fight_winsound and sys.platform.startswith("win"):
+                            try:
+                                import winsound
+                                adv_path = os.path.join(os.path.dirname(__file__), "Music", "ADVENTURE-1.wav")
+                                if os.path.exists(adv_path):
+                                    winsound.PlaySound(adv_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+                                    # aseguramos la bandera de bg winsound
+                                    self.winsound_used = True
+                                else:
+                                    winsound.PlaySound(None, 0)
+                            except Exception:
+                                pass
+                        self.fight_winsound = False
+                        # si el bg era openal, reanudarlo
+                        if self.bg_audio_source is not None:
+                            try:
+                                self.bg_audio_source.play()
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+
                 if resultado:
                     siguiente_accion = resultado
 
@@ -595,6 +679,21 @@ class Juego:
                 self.escenas[siguiente].mostrar(self.console)
                 # detener música de fondo si existe y ambiente del río si estuviera activo
                 try:
+                    # pelea
+                    try:
+                        if self.fight_src is not None:
+                            self.fight_src.stop()
+                    except Exception:
+                        pass
+                    self.fight_src = None
+                    if self.fight_winsound and sys.platform.startswith("win"):
+                        try:
+                            import winsound
+                            winsound.PlaySound(None, 0)
+                        except Exception:
+                            pass
+                    self.fight_winsound = False
+
                     # río (openal)
                     try:
                         if self.river_src is not None:
