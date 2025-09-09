@@ -204,6 +204,40 @@ def mostrar_intro(console):
 
     # el jugador ya configuró el personaje
 
+    # reproducir efecto de selección al terminar la configuración del personaje
+    # usar únicamente el archivo exacto del proyecto
+    select_rel = os.path.join(os.path.dirname(__file__), "Sound Effects", "SELECT1-1.wav")
+
+    try:
+        # En Windows, usar winsound primero (más fiable para efectos cortos)
+        if sys.platform.startswith("win"):
+            try:
+                import winsound
+                if os.path.exists(select_rel):
+                    console.print(f"[dim]Reproduciendo efecto de selección (winsound): {select_rel}[/]")
+                    winsound.PlaySound(select_rel, winsound.SND_FILENAME | winsound.SND_ASYNC)
+                else:
+                    console.print(f"[yellow]Archivo de sonido no encontrado: {select_rel}[/]")
+            except Exception as e:
+                console.print(f"[yellow]winsound falló ({e}), intentando openal...[/]")
+                raise
+        else:
+            # No-Windows: intentar openal
+            from openal import oalOpen
+            if os.path.exists(select_rel):
+                try:
+                    sel_src = oalOpen(select_rel)
+                    if sel_src is not None:
+                        sel_src.play()
+                        console.print(f"[dim]Reproduciendo efecto de selección (openal): {select_rel}[/]")
+                except Exception:
+                    console.print(f"[yellow]No se pudo reproducir el efecto con openal: {select_rel}[/]")
+            else:
+                console.print(f"[yellow]Archivo de sonido no encontrado: {select_rel}[/]")
+    except Exception:
+        # fallback final: informar y continuar
+        console.print("[yellow]Efecto de sonido no disponible (openal/winsound).[/]")
+
     # al terminar la configuración del personaje, detener la música de fondo si se está reproduciendo
     try:
         if audio_source:
