@@ -370,6 +370,36 @@ class Juego:
             except Exception:
                 pass
 
+            # Si el siguiente estado es 'rio', reproducir sonido de río
+            try:
+                if siguiente == "rio":
+                    river_path = os.path.join(os.path.dirname(__file__), "Sound Effects", "RIVER-1.wav")
+                    if os.path.exists(river_path):
+                        # Preferir openal para no interrumpir música de fondo
+                        try:
+                            from openal import oalOpen
+                            r_src = oalOpen(river_path)
+                            if r_src is not None:
+                                # reducir volumen al 70%
+                                try:
+                                    r_src.set_gain(0.7)
+                                except Exception:
+                                    try:
+                                        r_src.gain = 0.7
+                                    except Exception:
+                                        pass
+                                r_src.play()
+                        except Exception:
+                            # En Windows, si NO se usa winsound para la música, usar winsound
+                            if sys.platform.startswith("win") and not self.winsound_used:
+                                try:
+                                    import winsound
+                                    winsound.PlaySound(river_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+                                except Exception:
+                                    pass
+            except Exception:
+                pass
+
             # Si la escena es un final, terminar
             if siguiente.startswith("final"):
                 self.console.print("\n[bold red]--- FIN DEL JUEGO ---[/]\n")
