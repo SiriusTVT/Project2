@@ -84,6 +84,36 @@ def main():
     # crear escenas y lanzar el juego
     escenas = crear_escenas()
     juego = Juego(pj, escenas, "inicio")
+
+    # iniciar música de aventura después de configurar el personaje
+    try:
+        from openal import oalInit, oalOpen, oalQuit
+        oalInit()
+        bg_path = os.path.join(os.path.dirname(__file__), "Music", "ADVENTURE-1.wav")
+        if os.path.exists(bg_path):
+            bg_src = oalOpen(bg_path)
+            if bg_src is not None:
+                bg_src.play()
+                console.print("[dim]Reproduciendo música de aventura...[/]")
+                # guardar referencia para detener al final
+                juego.bg_audio_source = bg_src
+                juego.oal_quit = oalQuit
+        else:
+            console.print(f"[yellow]Archivo de música no encontrado: {bg_path}[/]")
+    except Exception:
+        # Fallback simple en Windows
+        try:
+            if sys.platform.startswith("win"):
+                import winsound
+                bg_path = os.path.join(os.path.dirname(__file__), "Music", "ADVENTURE-1.wav")
+                if os.path.exists(bg_path):
+                    winsound.PlaySound(bg_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+                    juego.winsound_used = True
+                    console.print("[dim]Reproduciendo música de aventura (winsound)...[/]")
+                else:
+                    console.print(f"[yellow]Archivo de música no encontrado: {bg_path}[/]")
+        except Exception:
+            console.print("[yellow]No fue posible reproducir ADVENTURE-1.wav.[/]")
     juego.run()
 
 
@@ -279,6 +309,10 @@ class Juego:
         self.escenas = escenas
         self.escena_actual = inicio
         self.console = Console()
+        # referencias opcionales para audio de fondo
+        self.bg_audio_source = None
+        self.oal_quit = None
+        self.winsound_used = False
 
     def run(self):
         self.console.print("[bold magenta]¡Bienvenido a Adventure Time versión texto![/]")
@@ -302,7 +336,22 @@ class Juego:
             if siguiente.startswith("final"):
                 self.console.print("\n[bold red]--- FIN DEL JUEGO ---[/]\n")
                 self.escenas[siguiente].mostrar(self.console)
-                # (sin audio) terminar
+                # detener música de fondo si existe
+                try:
+                    if self.bg_audio_source:
+                        self.bg_audio_source.stop()
+                    if self.oal_quit:
+                        self.oal_quit()
+                    # detener winsound si se usó
+                    if self.winsound_used and sys.platform.startswith("win"):
+                        try:
+                            import winsound
+                            winsound.PlaySound(None, 0)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+                # terminar
                 break
 
             self.escena_actual = siguiente
