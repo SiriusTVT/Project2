@@ -58,9 +58,87 @@ class Personaje:
         self.salud = base['salud'] + (self.nivel - 1) * 10
         self.danio = base['danio'] + int((self.nivel - 1) * 1)
 
-    def saludar(self):
-        print(f"¡Hola! Soy {self.nombre}, clase {self.clase.title()}, nivel {self.nivel}.")
-        print(f"Salud: {self.salud}  -  Daño: {self.danio}")
+        self.salud_max = self.salud
+        self.poderes = {
+            'guerrero': 'Golpe fuerte',
+            'mago': 'Bola de fuego',
+            'explorador': 'Ataque rápido',
+            'ladron': 'Ataque sigiloso',
+        }
+        self.poder = self.poderes.get(self.clase, 'Ataque básico')
+
+class Enemigo:
+    def __init__(self, nombre="Bestia sombría", salud=80, danio=12):
+        self.nombre = nombre
+        self.salud = salud
+        self.salud_max = salud
+        self.danio = danio
+    def esta_vivo(self):
+        return self.salud > 0
+    def mostrar(self, console):
+        console.print(f"[bold red]{self.nombre}[/] - Salud: {self.salud}")
+
+def combate(jugador):
+    console = Console()
+    enemigo = Enemigo()
+    console.print("\n[bold red]¡Una bestia sombría aparece![/]")
+    defensa = False
+    if not hasattr(jugador, "poder_usos"):
+        jugador.poder_usos = 2
+    while jugador.salud > 0 and enemigo.salud > 0:
+        console.print(f"\nTu salud: [green]{jugador.salud}[/] / {jugador.salud_max}")
+        enemigo.mostrar(console)
+        console.print("\nElige tu acción:")
+        console.print("1. Atacar")
+        console.print(f"2. Usar poder especial ({jugador.poder}) [{jugador.poder_usos} usos restantes]")
+        console.print("3. Defender")
+        console.print("4. Curarse (+15 salud)")
+        accion = input("Acción (1-4): ").strip()
+        if accion == "1":
+            danio = jugador.danio
+            console.print(f"Atacas y haces [yellow]{danio}[/] de daño.")
+            enemigo.salud -= danio
+        elif accion == "2":
+            if jugador.poder_usos > 0:
+                danio = jugador.danio + 10
+                console.print(f"Usas tu poder especial '{jugador.poder}' y haces [yellow]{danio}[/] de daño!")
+                enemigo.salud -= danio
+                jugador.poder_usos -= 1
+            else:
+                console.print("[dim]Ya no puedes usar tu poder especial.[/]")
+        elif accion == "3":
+            console.print("Te preparas para defenderte. El daño recibido se reduce a la mitad este turno.")
+            defensa = True
+        elif accion == "4":
+            curar = min(15, jugador.salud_max - jugador.salud)
+            jugador.salud += curar
+            console.print(f"Te curas [green]{curar}[/] puntos de salud.")
+        else:
+            console.print("[red]Acción no válida.[/]")
+            continue
+        # Turno del enemigo si sigue vivo
+        if enemigo.salud > 0:
+            import random
+            ataque = random.choice(["normal", "fuerte"])
+            if ataque == "normal":
+                danio_enemigo = enemigo.danio
+                mensaje = "La bestia te ataca."
+            else:
+                danio_enemigo = enemigo.danio + 5
+                mensaje = "La bestia lanza un ataque feroz!"
+            if defensa:
+                danio_enemigo //= 2
+                defensa = False
+            jugador.salud -= danio_enemigo
+            console.print(f"{mensaje} Recibes [red]{danio_enemigo}[/] de daño.")
+        time.sleep(0.5)
+    if jugador.salud > 0:
+        console.print("\n[bold green]¡Has vencido a la bestia![/]")
+    else:
+        console.print("\n[bold red]La bestia te ha derrotado...[/]")
+    if jugador.salud <= 0:
+        return "final_oscuro"
+    return "post_pelea"
 
 
 
@@ -78,8 +156,12 @@ def main():
 
     # crear personaje y mostrar estadísticas
     pj = Personaje(nombre, clase)
-    console.print("\n— Estadísticas del aventurero —", style="bold white")
-    pj.saludar()
+    console.print("\n— Estadísticas del aventurero —", style="bold white")  
+    console.print(f"Nombre: [cyan]{pj.nombre}[/]")
+    console.print(f"Clase: [magenta]{pj.clase.title()}[/]")
+    console.print(f"Salud: [green]{pj.salud}[/]")
+    console.print(f"Daño: [yellow]{pj.danio}[/]")
+    console.print(f"Habilidad especial: [bold]{pj.poder}[/]")
 
     # crear escenas y lanzar el juego
     escenas = crear_escenas()
@@ -321,8 +403,16 @@ class Juego:
             escena = self.escenas[self.escena_actual]
 
             # Acción especial de la escena (si tiene)
+            siguiente_accion = None
             if escena.accion:
-                escena.accion(self.jugador)
+                resultado = escena.accion(self.jugador)
+                if resultado:
+                    siguiente_accion = resultado
+
+            # Si la acción especial retorna una escena, saltar a esa escena directamente
+            if siguiente_accion:
+                self.escena_actual = siguiente_accion
+                continue
 
             escena.mostrar(self.console)
             eleccion = input("\n¿Qué decides hacer?: ")
@@ -411,6 +501,23 @@ def crear_escenas():
         "encrucijada": Escena(
             "La encrucijada",
             "Siguiendo tu camino llegas a una encrucijada. El viento sopla fuerte y las hojas crujen bajo tus pies.",
+            {"Avanzar": "pelea"}
+        ),
+        "pelea": Escena(
+            "¡Combate!",
+            "Una bestia sombría bloquea tu camino. Debes luchar para avanzar.",
+            {"Luchar": "combate"},
+            accion=None
+        ),
+        "combate": Escena(
+            "Combate contra la bestia",
+            "¡Prepárate para pelear!",
+            {},
+            accion=combate
+        ),
+        "post_pelea": Escena(
+            "Después del combate",
+            "Tras vencer a la bestia, puedes elegir tu destino final.",
             {"Ir hacia la montaña": "montaña",
              "Ir hacia la cueva iluminada": "cueva"}
         ),
