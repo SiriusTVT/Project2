@@ -1,6 +1,7 @@
 from rich.console import Console
 import time
 import sys
+import os
 
 # velocidad por defecto para el efecto de "typewriter" (segundos por carácter)
 # se puede ajustar con la función `seleccionar_velocidad`
@@ -136,6 +137,29 @@ def mostrar_intro(console):
     """
     # permitir al jugador seleccionar la velocidad de texto antes de mostrar la intro
     velocidad = seleccionar_velocidad(console)
+
+    # intentar reproducir música de fondo (INTRO-1.wav) después de seleccionar la velocidad
+    audio_source = None
+    _oal_quit = None
+    try:
+        # import local dentro de la función para que la ausencia de openal no rompa el programa
+        from openal import oalInit, oalOpen, oalQuit
+        oalInit()
+        _oal_quit = oalQuit
+        # construir ruta absoluta a Music/INTRO-1.wav junto al script
+        audio_path = os.path.join(os.path.dirname(__file__), "Music", "INTRO-1.wav")
+        if os.path.exists(audio_path):
+            audio_source = oalOpen(audio_path)
+            if audio_source is not None:
+                audio_source.play()
+                console.print("[dim]Reproduciendo música de fondo...[/]")
+        else:
+            console.print(f"[yellow]Archivo de audio no encontrado: {audio_path}[/]")
+    except Exception as e:
+        # no fallar si openal no está instalado o hay problema con audio
+        console.print(f"[yellow]Audio no disponible ({e}). Continuando sin música.[/]")
+
+    # (sin audio) continuar con la introducción
     for parte in get_intro_lines():
         typewriter(parte, console=console, style="bold green")
         # pausa entre párrafos proporcional a la velocidad (más rápida -> menos pausa)
@@ -154,7 +178,7 @@ def mostrar_intro(console):
 
     console.print("¡Perfecto! La aventura comienza...", style="bold magenta")
 
-    # pedir datos del aventurero
+    # pedir datos del aventurero (la música sigue hasta completar la configuración)
     try:
         nombre = input("Introduce el nombre de tu aventurero: ").strip()
     except (KeyboardInterrupt, EOFError):
@@ -168,7 +192,26 @@ def mostrar_intro(console):
         clase = input("Elige una clase (guerrero/mago/explorador/ladron): ").strip().lower()
     except (KeyboardInterrupt, EOFError):
         console.print("Entrada interrumpida. Saliendo...", style="bold red")
+        # detener audio si estaba sonando
+        try:
+            if audio_source:
+                audio_source.stop()
+            if _oal_quit:
+                _oal_quit()
+        except Exception:
+            pass
         return None
+
+    # el jugador ya configuró el personaje
+
+    # al terminar la configuración del personaje, detener la música de fondo si se está reproduciendo
+    try:
+        if audio_source:
+            audio_source.stop()
+        if _oal_quit:
+            _oal_quit()
+    except Exception:
+        pass
 
     return (nombre, clase)
 
@@ -225,6 +268,7 @@ class Juego:
             if siguiente.startswith("final"):
                 self.console.print("\n[bold red]--- FIN DEL JUEGO ---[/]\n")
                 self.escenas[siguiente].mostrar(self.console)
+                # (sin audio) terminar
                 break
 
             self.escena_actual = siguiente
@@ -237,101 +281,88 @@ def crear_escenas():
             "Inicio Juego",
             "Toma tu primera decision",
             {"Explorar el sendero a la izquierda": "izquierda",
-             "Avanzar hacia el río a la derecha": "rio"},
-            sonido="viento+grillos"
+             "Avanzar hacia el río a la derecha": "rio"}
         ),
 
         "izquierda": Escena(
             "Árbol con marcas",
             "Llegas a un árbol con marcas extrañas en la corteza. El ambiente se siente más denso.",
             {"Tocar las marcas": "cabaña",
-             "Ignorarlas y seguir adelante": "cabaña"},
-            sonido="crujido ramas"
+             "Ignorarlas y seguir adelante": "cabaña"}
         ),
 
         "rio": Escena(
             "Río caudaloso",
             "Encuentras un río caudaloso que fluye con fuerza.",
             {"Cruzar el río": "cabaña",
-             "Caminar paralelo al río": "cabaña"},
-            sonido="agua fuerte"
+             "Caminar paralelo al río": "cabaña"}
         ),
 
         "cabaña": Escena(
             "Cabaña abandonada",
             "Llegas a una pequeña cabaña abandonada. La puerta de madera se mueve con el viento.",
             {"Entrar a la cabaña": "cofre",
-             "Rodearla y seguir el camino": "rugido"},
-            sonido="puerta+lechuza"
+             "Rodearla y seguir el camino": "rugido"}
         ),
 
         "cofre": Escena(
             "El cofre misterioso",
             "Dentro de la cabaña hay un cofre cerrado.",
             {"Abrir el cofre": "mapa",
-             "Buscar pistas en el interior": "rugido"},
-            sonido="viento rendijas"
+             "Buscar pistas en el interior": "rugido"}
         ),
 
         "mapa": Escena(
             "Mapa secreto",
             "Encuentras un mapa con la ubicación de un santuario escondido.",
             {"Seguir el mapa": "encrucijada"},
-            sonido="papel",
             accion=lambda jugador: setattr(jugador, "tiene_piedra", True)
         ),
 
         "rugido": Escena(
             "El rugido lejano",
             "Sales de la cabaña y escuchas un rugido grave a lo lejos.",
-            {"Seguir el rugido": "encrucijada"},
-            sonido="rugido"
+            {"Seguir el rugido": "encrucijada"}
         ),
 
         "encrucijada": Escena(
             "La encrucijada",
             "Siguiendo tu camino llegas a una encrucijada. El viento sopla fuerte y las hojas crujen bajo tus pies.",
             {"Ir hacia la montaña": "montaña",
-             "Ir hacia la cueva iluminada": "cueva"},
-            sonido="viento hojas"
+             "Ir hacia la cueva iluminada": "cueva"}
         ),
 
         "montaña": Escena(
             "El altar en la montaña",
             "Escalas entre rocas y descubres un altar antiguo. Sientes que aquí puedes colocar la piedra mágica.",
             {"Colocar la piedra": "final_heroico",
-             "No colocar la piedra": "final_oscuro"},
-            sonido="eco viento"
+             "No colocar la piedra": "final_oscuro"}
         ),
 
         "cueva": Escena(
             "La cueva iluminada",
             "Encuentras a una criatura guardiana que te habla con voz grave.\nTe pregunta si deseas continuar tu viaje.",
             {"Aceptar la oferta del guardián": "final_neutral",
-             "Rechazar y salir corriendo": "final_oscuro"},
-            sonido="respiración+eco"
+             "Rechazar y salir corriendo": "final_oscuro"}
         ),
 
         # finales
         "final_heroico": Escena(
             "Final Heroico",
             "Colocas la piedra en el altar. El bosque se ilumina y la magia oscura desaparece.\n¡Has salvado al bosque!",
-            {},
-            sonido="música triunfal"
+            {}
         ),
 
         "final_oscuro": Escena(
             "Final Oscuro",
             "Decides no usar la piedra. La oscuridad crece y quedas atrapado para siempre...",
-            {},
-            sonido="truenos+risas"
+            {}
         ),
 
         "final_neutral": Escena(
             "Final Neutral",
             "Aceptas la oferta del guardián y te conviertes en el nuevo protector del bosque.",
-            {},
-            sonido="voces místicas"
+            {}
         ),
     }
 
