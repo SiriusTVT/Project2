@@ -364,12 +364,9 @@ def combate_personalizado(etapa:int, proxima_escena="sendero_profundo"):
             # escalar progreso
             jugador.nivel_progreso = getattr(jugador,'nivel_progreso',0)+1
             # Recompensa monetaria
-            recompensa = random.randint(0,10)
-            if recompensa>0:
-                jugador.monedas += recompensa
-                console.print(f"[yellow]Obtienes {recompensa} monedas. Total: {jugador.monedas}[/]")
-            else:
-                console.print("[dim]No encontraste monedas esta vez.[/]")
+            recompensa = random.randint(2,10)
+            jugador.monedas += recompensa
+            console.print(f"[yellow]Obtienes {recompensa} monedas. Total: {jugador.monedas}[/]")
             return proxima_escena
         else:
             return handle_derrota(jugador)
@@ -510,12 +507,9 @@ def combate(jugador):
         play_effect(os.path.join(os.path.dirname(__file__), "Sound Effects", "WINBATTLE-1.wav"))
         jugador.nivel_progreso = max(getattr(jugador, 'nivel_progreso', 0), 1)
         # Recompensa monetaria
-        recompensa = random.randint(0,10)
-        if recompensa>0:
-            jugador.monedas += recompensa
-            console.print(f"[yellow]Obtienes {recompensa} monedas. Total: {jugador.monedas}[/]")
-        else:
-            console.print("[dim]No encontraste monedas esta vez.[/]")
+        recompensa = random.randint(2,10)
+        jugador.monedas += recompensa
+        console.print(f"[yellow]Obtienes {recompensa} monedas. Total: {jugador.monedas}[/]")
         return "sendero_profundo"
     return handle_derrota(jugador)
 
