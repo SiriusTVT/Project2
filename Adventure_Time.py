@@ -128,7 +128,7 @@ def seleccionar_velocidad(console):
 
 class Personaje:
     def __init__(self, nombre, clase=None, nivel=1):
-        """Inicializa el personaje con estadísticas base, poder y economía."""
+        """Inicializa el personaje con estadísticas base, poder, economía y descansos."""
         self.nombre = nombre or "Aventurero"
         self.nivel = nivel or 1
         self.clase = (clase or "explorador").lower()
@@ -158,12 +158,16 @@ class Personaje:
         self.monedas = 10
         self.amuleto_vigor = False
 
+        # Conteo de descansos disponibles (máximo 3)
+        self.descansos = 0
+
     def restaurar(self):
         self.salud = self.salud_max
         self.poder_usos = 2
         self.tiene_piedra = False
         self.monedas = 10
         self.amuleto_vigor = False
+        self.descansos = 0
 
 class Enemigo:
     def __init__(self, nombre="Bestia sombría", salud=80, danio=12):
@@ -1743,7 +1747,34 @@ class Juego:
                 break
 
             self.escena_actual = siguiente
+def descanso_breve_accion(j):
+    """Acción de descanso breve con límite de 3 usos.
 
+    Cura +8 salud hasta 3 veces. A partir de la 4ª vez solo muestra mensaje sin curar.
+    """
+    from rich.console import Console
+    c = Console()
+    if getattr(j, 'descansos', 0) < 3:
+        j.descansos += 1
+        antes = j.salud
+        j.salud = min(j.salud_max, j.salud + 8)
+        c.print(f"[green]Descansas ({j.descansos}/3). Salud {antes} -> {j.salud}[/]")
+    else:
+        c.print("[yellow]Ya has usado todos tus descansos (3). No recuperas más salud.[/]")
+    return "sendero_profundo"
+
+def sendero_profundo_accion(j):
+    """Acción previa de la escena 'sendero_profundo' que oculta la opción de descanso tras 3 usos."""
+    try:
+        if getattr(j, 'descansos', 0) >= 3 and JUEGO_REF is not None:
+            sc = JUEGO_REF.escenas.get("sendero_profundo")
+            if sc and "Tomar un breve descanso" in sc.opciones:
+                # Crear nuevo dict sin la opción de descanso
+                nuevas = {k:v for k,v in sc.opciones.items() if k != "Tomar un breve descanso"}
+                sc.opciones = nuevas
+    except Exception:
+        pass
+    return None
 
 def crear_escenas():
     intro_text = "\n".join(get_intro_lines())
@@ -1867,7 +1898,8 @@ def crear_escenas():
         "sendero_profundo": Escena(
             "Sendero profundo",
             "Tras la victoria, avanzas por un sendero que se estrecha. El bosque parece observarte.",
-            {"Seguir huellas profundas": "combate_lobo", "Seguir susurros lejanos": "claro_susurros", "Tomar un breve descanso": "descanso_breve", "Visitar la tienda": "tienda_bosque"}
+            {"Seguir huellas profundas": "combate_lobo", "Seguir susurros lejanos": "claro_susurros", "Tomar un breve descanso": "descanso_breve", "Visitar la tienda": "tienda_bosque"},
+            accion=sendero_profundo_accion
         ),
         "claro_susurros": Escena(
             "Claro de susurros",
@@ -1877,9 +1909,9 @@ def crear_escenas():
         ),
         "descanso_breve": Escena(
             "Descanso breve",
-            "Encuentras un tronco donde recuperas el aliento (+8 salud).",
+            "Encuentras un tronco donde recuperas el aliento (+8 salud). (Máx 3 descansos)",
             {},
-            accion=lambda j: (setattr(j, 'salud', min(j.salud_max, j.salud+8)) or "sendero_profundo")
+            accion=descanso_breve_accion
         ),
         "bosque_bruma": Escena(
             "Bosque de bruma",
