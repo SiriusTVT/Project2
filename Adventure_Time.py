@@ -12,6 +12,64 @@ FIGHT_AUDIO_REF = {"src": None, "winsound": False}
 # Referencias para audio de derrota (FAILBATTLE / LOSE)
 DEFEAT_AUDIO = {"sources": [], "winsound": False}
 
+# Conjuntos de terreno para sonido de pasos
+TERRAIN_FOREST = {"inicio", "izquierda", "rio", "rugido", "encrucijada"}
+TERRAIN_SOLID = {"cabaña", "cofre", "mapa", "pelea", "combate", "post_pelea", "montaña", "cueva", "final_heroico", "final_oscuro", "final_neutral"}
+
+# Último efecto reproducido para evitar solapamientos
+LAST_SFX = {"src": None, "winsound": False}
+
+def play_effect(path: str, allow_winsound: bool = True) -> bool:
+    """Reproduce un efecto deteniendo el anterior para evitar solapamientos.
+
+    Prioriza OpenAL; si no está disponible usa winsound (si se permite y no se quiere preservar otro audio).
+    """
+    if not path or not os.path.exists(path):
+        return False
+    # Detener efecto anterior (solo efecto, no música de fondo)
+    try:
+        if LAST_SFX["src"] is not None:
+            try:
+                LAST_SFX["src"].stop()
+            except Exception:
+                pass
+            LAST_SFX["src"] = None
+        if LAST_SFX["winsound"]:
+            if sys.platform.startswith("win"):
+                try:
+                    import winsound
+                    winsound.PlaySound(None, 0)
+                except Exception:
+                    pass
+            LAST_SFX["winsound"] = False
+    except Exception:
+        pass
+    # Intentar OpenAL
+    try:
+        from openal import oalOpen
+        try:
+            src = oalOpen(path)
+            if src is not None:
+                src.play()
+                LAST_SFX["src"] = src
+                LAST_SFX["winsound"] = False
+                return True
+        except Exception:
+            pass
+    except Exception:
+        pass
+    # Fallback winsound
+    if allow_winsound and sys.platform.startswith("win"):
+        try:
+            import winsound
+            winsound.PlaySound(path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+            LAST_SFX["src"] = None
+            LAST_SFX["winsound"] = True
+            return True
+        except Exception:
+            pass
+    return False
+
 
 def _play_sfx(filepath):
     """Reproduce un efecto de sonido corto de forma no bloqueante.
@@ -137,14 +195,14 @@ def combate(jugador):
         accion = input("Acción (1-4): ").strip()
         if accion == "1":
             # Efecto de espada
-            _play_sfx(os.path.join(os.path.dirname(__file__), "Player Effects", "SWORD-1.wav"))
+            play_effect(os.path.join(os.path.dirname(__file__), "Player Effects", "SWORD-1.wav"))
             danio = jugador.danio
             console.print(f"Atacas y haces [yellow]{danio}[/] de daño.")
             enemigo.salud -= danio
         elif accion == "2":
             if jugador.poder_usos > 0:
                 # Poder especial también usa efecto de espada
-                _play_sfx(os.path.join(os.path.dirname(__file__), "Player Effects", "SWORD-1.wav"))
+                play_effect(os.path.join(os.path.dirname(__file__), "Player Effects", "SWORD-1.wav"))
                 danio = jugador.danio + 10
                 console.print(f"Usas tu poder especial '{jugador.poder}' y haces [yellow]{danio}[/] de daño!")
                 enemigo.salud -= danio
@@ -153,7 +211,7 @@ def combate(jugador):
                 console.print("[dim]Ya no puedes usar tu poder especial.[/]")
         elif accion == "3":
             # Efecto de escudo al defender
-            _play_sfx(os.path.join(os.path.dirname(__file__), "Player Effects", "SHIELD-1.wav"))
+            play_effect(os.path.join(os.path.dirname(__file__), "Player Effects", "SHIELD-1.wav"))
             console.print("Te preparas para defenderte. El daño recibido se reduce a la mitad este turno.")
             defensa = True
         elif accion == "4":
@@ -182,7 +240,7 @@ def combate(jugador):
     if jugador.salud > 0:
         console.print("\n[bold green]¡Has vencido a la bestia![/]")
         # reproducir sonido de victoria
-        _play_sfx(os.path.join(os.path.dirname(__file__), "Sound Effects", "WINBATTLE-1.wav"))
+        play_effect(os.path.join(os.path.dirname(__file__), "Sound Effects", "WINBATTLE-1.wav"))
     else:
         console.print("\n[bold red]La bestia te ha derrotado...[/]")
         # Detener música de pelea inmediatamente (openal o winsound)
@@ -234,8 +292,8 @@ def combate(jugador):
             pass
         if not played_openal:
             # Fallback: reproducir en secuencia (winsound u otro) si no se pudo con openal
-            _play_sfx(fail_path)
-            _play_sfx(lose_path)
+            play_effect(fail_path)
+            play_effect(lose_path)
             if sys.platform.startswith("win"):
                 defeat_winsound = True
                 try:
@@ -312,6 +370,14 @@ def main():
         if os.path.exists(bg_path):
             bg_src = oalOpen(bg_path)
             if bg_src is not None:
+                # Reducir volumen al 20%
+                try:
+                    bg_src.set_gain(0.2)
+                except Exception:
+                    try:
+                        bg_src.gain = 0.2
+                    except Exception:
+                        pass
                 bg_src.play()
                 console.print("[dim]Reproduciendo música de aventura...[/]")
                 # guardar referencia para detener al final
@@ -408,6 +474,14 @@ def mostrar_intro(console):
         if os.path.exists(audio_path):
             audio_source = oalOpen(audio_path)
             if audio_source is not None:
+                # Reducir volumen al 20% para la música de introducción (solo OpenAL)
+                try:
+                    audio_source.set_gain(0.2)
+                except Exception:
+                    try:
+                        audio_source.gain = 0.2
+                    except Exception:
+                        pass
                 audio_source.play()
         else:
             console.print(f"[yellow]Archivo de audio no encontrado: {audio_path}[/]")
@@ -533,9 +607,9 @@ def mostrar_intro(console):
         # En Windows, usar winsound primero (más fiable para efectos cortos)
         if sys.platform.startswith("win"):
             try:
-                import winsound
                 if os.path.exists(select_rel):
-                    winsound.PlaySound(select_rel, winsound.SND_FILENAME | winsound.SND_ASYNC)
+                    play_effect(select_rel)
+                    time.sleep(2)
                 else:
                     console.print(f"[yellow]Archivo de sonido no encontrado: {select_rel}[/]")
             except Exception as e:
@@ -546,9 +620,8 @@ def mostrar_intro(console):
             from openal import oalOpen
             if os.path.exists(select_rel):
                 try:
-                    sel_src = oalOpen(select_rel)
-                    if sel_src is not None:
-                        sel_src.play()
+                    play_effect(select_rel, allow_winsound=False)
+                    time.sleep(0.25)
                 except Exception:
                     console.print(f"[yellow]No se pudo reproducir el efecto con openal: {select_rel}[/]")
             else:
@@ -628,6 +701,48 @@ class Juego:
                                 self.bg_audio_source.stop()
                             except Exception:
                                 pass
+                        # detener winsound de aventura si se usaba
+                        if self.winsound_used and sys.platform.startswith("win"):
+                            try:
+                                import winsound
+                                winsound.PlaySound(None, 0)
+                            except Exception:
+                                pass
+                        # detener ambiente de río (openal / winsound)
+                        try:
+                            if self.river_src is not None:
+                                try:
+                                    self.river_src.stop()
+                                except Exception:
+                                    pass
+                            self.river_src = None
+                            if self.river_winsound and sys.platform.startswith("win"):
+                                try:
+                                    import winsound
+                                    winsound.PlaySound(None, 0)
+                                except Exception:
+                                    pass
+                            self.river_winsound = False
+                        except Exception:
+                            pass
+                        # detener último efecto SFX para evitar solapamiento
+                        try:
+                            global LAST_SFX
+                            if LAST_SFX.get("src") is not None:
+                                try:
+                                    LAST_SFX["src"].stop()
+                                except Exception:
+                                    pass
+                                LAST_SFX["src"] = None
+                            if LAST_SFX.get("winsound") and sys.platform.startswith("win"):
+                                try:
+                                    import winsound
+                                    winsound.PlaySound(None, 0)
+                                except Exception:
+                                    pass
+                            LAST_SFX["winsound"] = False
+                        except Exception:
+                            pass
                         # reproducir música de pelea
                         fight_path = os.path.join(os.path.dirname(__file__), "Music", "FIGHT-1.wav")
                         if os.path.exists(fight_path):
@@ -772,6 +887,14 @@ class Juego:
                 self.console.print("[red]Opción no válida[/]")
                 continue
 
+            # Determinar texto exacto de la opción elegida para detectar acciones especiales (como cruzar el río)
+            try:
+                idx_op = int(eleccion) - 1
+                claves_op = list(escena.opciones.keys())
+                opcion_elegida_texto = claves_op[idx_op] if 0 <= idx_op < len(claves_op) else ""
+            except Exception:
+                opcion_elegida_texto = ""
+
             # Si estamos en la escena del río y se eligió "Cruzar el río", reproducir CROSSRIVER-1.wav
             try:
                 if self.escena_actual == "rio":
@@ -788,36 +911,10 @@ class Juego:
                     if opcion_texto and "cruzar" in opcion_texto:
                         cr_path = os.path.join(os.path.dirname(__file__), "Sound Effects", "CROSSRIVER-1.wav")
                         if os.path.exists(cr_path):
-                            # Preferir openal si hay bg con openal; evitar interrumpir winsound de fondo
-                            if self.bg_audio_source is not None:
-                                try:
-                                    from openal import oalOpen
-                                    cr_src = oalOpen(cr_path)
-                                    if cr_src is not None:
-                                        cr_src.play()
-                                except Exception:
-                                    pass
-                            else:
-                                if sys.platform.startswith("win") and not self.winsound_used:
-                                    try:
-                                        import winsound
-                                        winsound.PlaySound(cr_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
-                                    except Exception:
-                                        try:
-                                            from openal import oalOpen
-                                            cr_src = oalOpen(cr_path)
-                                            if cr_src is not None:
-                                                cr_src.play()
-                                        except Exception:
-                                            pass
-                                else:
-                                    try:
-                                        from openal import oalOpen
-                                        cr_src = oalOpen(cr_path)
-                                        if cr_src is not None:
-                                            cr_src.play()
-                                    except Exception:
-                                        pass
+                            # Reproducir cruce de río con prioridad y pausar siguientes efectos breves
+                            play_effect(cr_path)
+                            # Marcar un timestamp para inhibir select/footstep inmediatos
+                            self._last_crossriver_time = time.time()
             except Exception:
                 pass
 
@@ -844,41 +941,26 @@ class Juego:
 
             # Reproducir sonido de selección al elegir una opción válida
             try:
-                sfx_path = os.path.join(os.path.dirname(__file__), "Sound Effects", "SELECT3-1.wav")
-                if os.path.exists(sfx_path):
-                    # Si la música de fondo está con openal, usar openal para el SFX
-                    if self.bg_audio_source is not None:
-                        try:
-                            from openal import oalOpen
-                            sfx_src = oalOpen(sfx_path)
-                            if sfx_src is not None:
-                                sfx_src.play()
-                        except Exception:
-                            pass
-                    else:
-                        # Si estamos en Windows y NO estamos usando winsound para el bg, usar winsound para el SFX
-                        if sys.platform.startswith("win") and not self.winsound_used:
-                            try:
-                                import winsound
-                                winsound.PlaySound(sfx_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
-                            except Exception:
-                                # Intentar openal como alternativa
-                                try:
-                                    from openal import oalOpen
-                                    sfx_src = oalOpen(sfx_path)
-                                    if sfx_src is not None:
-                                        sfx_src.play()
-                                except Exception:
-                                    pass
-                        else:
-                            # En otros casos, intentar openal (para no interrumpir winsound de fondo)
-                            try:
-                                from openal import oalOpen
-                                sfx_src = oalOpen(sfx_path)
-                                if sfx_src is not None:
-                                    sfx_src.play()
-                            except Exception:
-                                pass
+                # Evitar solapar con CROSSRIVER si acaba de sonar hace < 0.4s
+                recent_cross = hasattr(self, "_last_crossriver_time") and (time.time() - getattr(self, "_last_crossriver_time")) < 0.4
+                if not recent_cross:
+                    sfx_path = os.path.join(os.path.dirname(__file__), "Sound Effects", "SELECT3-1.wav")
+                    if os.path.exists(sfx_path):
+                        play_effect(sfx_path)
+            except Exception:
+                pass
+
+            # Reproducir sonido de pasos según el terreno del destino (evitar si es un final inmediato)
+            try:
+                if not siguiente.startswith("final"):
+                    # No reproducir pasos si CROSSRIVER acaba de sonar (ventana 0.5s)
+                    recent_cross = hasattr(self, "_last_crossriver_time") and (time.time() - getattr(self, "_last_crossriver_time")) < 0.5
+                    cruzando = (self.escena_actual == "rio" and "cruzar" in opcion_elegida_texto.lower())
+                    if not cruzando and not recent_cross:
+                        base_dir = os.path.dirname(__file__)
+                        step_path = os.path.join(base_dir, "Sound Effects", "FORESTWALK-1.wav") if siguiente in TERRAIN_FOREST else os.path.join(base_dir, "Sound Effects", "SOLIDWALK-1.wav")
+                        if os.path.exists(step_path):
+                            play_effect(step_path)
             except Exception:
                 pass
 
