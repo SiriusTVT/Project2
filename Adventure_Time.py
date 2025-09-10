@@ -1293,6 +1293,46 @@ class Juego:
                                     self.bg_audio_source.play()
                                 except Exception:
                                     pass
+                            else:
+                                # Intentar recrear música de aventura si se perdió (caso tiendas u otros)
+                                try:
+                                    adv_path = os.path.join(os.path.dirname(__file__), "Music", "ADVENTURE-1.wav")
+                                    if os.path.exists(adv_path):
+                                        started = False
+                                        # Intentar OpenAL primero
+                                        try:
+                                            from openal import oalOpen
+                                            src = oalOpen(adv_path)
+                                            if src is not None:
+                                                try:
+                                                    src.set_gain(0.2)
+                                                except Exception:
+                                                    try: src.gain = 0.2
+                                                    except Exception: pass
+                                                src.play()
+                                                self.bg_audio_source = src
+                                                started = True
+                                                try:
+                                                    BG_AUDIO_REF["src"] = src
+                                                    BG_AUDIO_REF["winsound"] = False
+                                                except Exception:
+                                                    pass
+                                        except Exception:
+                                            pass
+                                        if not started and sys.platform.startswith("win"):
+                                            try:
+                                                import winsound
+                                                winsound.PlaySound(adv_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+                                                self.winsound_used = True
+                                                try:
+                                                    BG_AUDIO_REF["src"] = None
+                                                    BG_AUDIO_REF["winsound"] = True
+                                                except Exception:
+                                                    pass
+                                            except Exception:
+                                                pass
+                                except Exception:
+                                    pass
                         else:
                             # Derrota: detener explícitamente winsound de pelea si estaba activo
                             if self.fight_winsound and sys.platform.startswith("win"):
