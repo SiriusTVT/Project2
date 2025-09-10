@@ -14,6 +14,7 @@ FIGHT_AUDIO_REF = {"src": None, "winsound": False}
 BG_AUDIO_REF = {"src": None, "winsound": False}
 # Referencia global a la instancia del juego para acceder a bg_audio_source
 JUEGO_REF = None
+REST_SENTINEL = "__DESCANSO_DYNAMIC__"
 # Referencias para audio de derrota (FAILBATTLE / LOSE)
 DEFEAT_AUDIO = {"sources": [], "winsound": False}
 
@@ -1131,6 +1132,20 @@ class Juego:
         while True:
             escena = self.escenas[self.escena_actual]
 
+            # Inyectar opción de descanso dinámica si procede
+            try:
+                if (not self.escena_actual.startswith("final") and
+                    self.escena_actual not in {"combate","combate_lobo","combate_espectro","combate_guardiana"} and
+                    not self.escena_actual.startswith("tienda") and
+                    getattr(self.jugador, 'descansos', 0) < 3):
+                    if "Descansar (+8 salud)" not in escena.opciones:
+                        escena.opciones = dict(escena.opciones)
+                        escena.opciones["Descansar (+8 salud)"] = REST_SENTINEL
+                elif getattr(self.jugador, 'descansos', 0) >= 3 and "Descansar (+8 salud)" in escena.opciones:
+                    escena.opciones = {k:v for k,v in escena.opciones.items() if k != "Descansar (+8 salud)"}
+            except Exception:
+                pass
+
             # Manejo directo si ya estamos en un final (por ejemplo tras derrota -> final_oscuro)
             if self.escena_actual.startswith("final"):
                 self.console.print("\n[bold red]--- FIN DEL JUEGO ---[/]\n")
@@ -1441,7 +1456,22 @@ class Juego:
 
             escena.mostrar(self.console)
             eleccion = input("\n¿Qué decides hacer?: ")
-            siguiente = escena.elegir(eleccion)
+            destino_tmp = escena.elegir(eleccion)
+            if destino_tmp == REST_SENTINEL:
+                try:
+                    if getattr(self.jugador,'descansos',0) < 3:
+                        antes = self.jugador.salud
+                        self.jugador.salud = min(self.jugador.salud_max, self.jugador.salud + 8)
+                        self.jugador.descansos += 1
+                        self.console.print(f"[green]Descansas ({self.jugador.descansos}/3). Salud {antes} -> {self.jugador.salud}[/]")
+                        if self.jugador.descansos >= 3 and "Descansar (+8 salud)" in escena.opciones:
+                            escena.opciones = {k:v for k,v in escena.opciones.items() if k != "Descansar (+8 salud)"}
+                    else:
+                        self.console.print("[yellow]Ya no puedes descansar más (3/3).[/]")
+                except Exception:
+                    pass
+                continue
+            siguiente = destino_tmp
 
             if not siguiente:
                 self.console.print("[red]Opción no válida[/]")
