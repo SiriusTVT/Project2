@@ -14,7 +14,7 @@ DEFEAT_AUDIO = {"sources": [], "winsound": False}
 
 # Conjuntos de terreno para sonido de pasos
 TERRAIN_FOREST = {"inicio", "izquierda", "rio", "rugido", "encrucijada"}
-TERRAIN_SOLID = {"cabaña", "cofre", "mapa", "pelea", "combate", "post_pelea", "montaña", "cueva", "final_heroico", "final_oscuro", "final_neutral"}
+TERRAIN_SOLID = {"cabaña", "cofre", "mapa", "pelea", "combate", "montaña", "cueva", "final_heroico", "final_oscuro", "final_neutral", "sendero_profundo", "bosque_bruma", "claro_corrupto", "claro_final"}
 
 # Último efecto reproducido para evitar solapamientos
 LAST_SFX = {"src": None, "winsound": False}
@@ -177,6 +177,267 @@ class Enemigo:
     def mostrar(self, console):
         console.print(f"[bold red]{self.nombre}[/] - Salud: {self.salud}")
 
+# ------------------- NUEVAS UTILIDADES DE DIFICULTAD / ENEMIGOS ------------------- #
+def generar_enemigo(etapa:int):
+    """Genera un enemigo según la etapa de dificultad (1..N)."""
+    catalogo = {
+        1: ("Lobo Sombrío", 70, 14, {"sangrado":0.25}),
+        2: ("Espectro del Bosque", 90, 16, {"drain":0.3}),
+        3: ("Guardiana Corrompida", 120, 20, {"stun":0.2}),
+    }
+    nombre, base_salud, base_danio, habilidades = catalogo.get(etapa, catalogo[3])
+    e = Enemigo(nombre, base_salud, base_danio)
+    e.habilidades = habilidades
+    return e
+
+def handle_derrota(jugador):
+    """Gestiona audio y flujo cuando el jugador es derrotado en cualquier combate.
+
+    Devuelve 'reiniciar' si el usuario desea volver a empezar o 'final_oscuro' si no.
+    """
+    console = Console()
+    console.print("\n[bold red]Has sido derrotado...[/]")
+    # Detener música de combate previa
+    try:
+        global FIGHT_AUDIO_REF
+        if FIGHT_AUDIO_REF.get("src") is not None:
+            try:
+                FIGHT_AUDIO_REF["src"].stop()
+            except Exception:
+                pass
+        if FIGHT_AUDIO_REF.get("winsound") and sys.platform.startswith("win"):
+            try:
+                import winsound
+                winsound.PlaySound(None, 0)
+            except Exception:
+                pass
+        FIGHT_AUDIO_REF["src"] = None
+        FIGHT_AUDIO_REF["winsound"] = False
+    except Exception:
+        pass
+    # Reproducir audios de derrota (FAILBATTLE + LOSE) simultáneamente si es posible
+    base_dir = os.path.dirname(__file__)
+    fail_path = os.path.join(base_dir, "Music", "FAILBATTLE-1.wav")
+    lose_path = os.path.join(base_dir, "Sound Effects", "LOSE-1.wav")
+    played_openal = False
+    try:
+        from openal import oalOpen
+        fuentes = []
+        for p in (fail_path, lose_path):
+            if os.path.exists(p):
+                try:
+                    s = oalOpen(p)
+                    if s is not None:
+                        if p.endswith("FAILBATTLE-1.wav"):
+                            try:
+                                s.set_gain(0.4)  # un poco más bajo
+                            except Exception:
+                                pass
+                        s.play()
+                        fuentes.append(s)
+                except Exception:
+                    pass
+        if fuentes:
+            played_openal = True
+            DEFEAT_AUDIO["sources"] = fuentes
+            DEFEAT_AUDIO["winsound"] = False
+    except Exception:
+        pass
+    if not played_openal:
+        # Fallback secuencial
+        play_effect(fail_path)
+        play_effect(lose_path)
+        if sys.platform.startswith("win"):
+            DEFEAT_AUDIO["sources"] = []
+            DEFEAT_AUDIO["winsound"] = True
+    # Preguntar reinicio
+    while True:
+        try:
+            resp = input("¿Quieres intentarlo de nuevo desde el inicio? (s/n): ").strip().lower()
+        except (KeyboardInterrupt, EOFError):
+            resp = 'n'
+        if resp.startswith('s'):
+            # detener audios derrota
+            for s in DEFEAT_AUDIO.get("sources", []):
+                try:
+                    s.stop()
+                except Exception:
+                    pass
+            if DEFEAT_AUDIO.get("winsound") and sys.platform.startswith("win"):
+                try:
+                    import winsound
+                    winsound.PlaySound(None, 0)
+                except Exception:
+                    pass
+            DEFEAT_AUDIO["sources"] = []
+            DEFEAT_AUDIO["winsound"] = False
+            if hasattr(jugador, 'restaurar'):
+                jugador.restaurar()
+            return "reiniciar"
+        if resp.startswith('n') or resp == '':
+            return "final_oscuro"
+        console.print("[yellow]Opción no válida. Responde s o n.[/]")
+
+def combate_personalizado(etapa:int, proxima_escena="sendero_profundo"):
+    """Devuelve una función de acción para una Escena que ejecuta un combate escalado."""
+    def _accion(jugador):
+        enemigo = generar_enemigo(etapa)
+        console = Console()
+        console.print(f"\n[bold red]¡{enemigo.nombre} aparece![/]")
+        if not hasattr(jugador, "poder_usos"):
+            jugador.poder_usos = 2
+        defensa = False
+        turno_cont = 0
+        while jugador.salud > 0 and enemigo.salud > 0:
+            turno_cont += 1
+            console.print(f"\nTu salud: [green]{jugador.salud}[/] / {jugador.salud_max}")
+            enemigo.mostrar(console)
+            console.print("\nElige tu acción:")
+            console.print("1. Atacar")
+            console.print(f"2. Poder especial ({jugador.poder}) [{getattr(jugador,'poder_usos',0)} usos]")
+            console.print("3. Defender")
+            console.print("4. Curarse (+15)")
+            accion = input("Acción (1-4): ").strip()
+            if accion == "1":
+                play_effect(os.path.join(os.path.dirname(__file__), "Player Effects", "SWORD-1.wav"))
+                danio = jugador.danio
+                if hasattr(enemigo, 'habilidades') and 'stun' in enemigo.habilidades and turno_cont % 4 == 0:
+                    console.print("[dim]El aura corrupta reduce tu precisión (-20% daño este turno).[/]")
+                    danio = int(danio*0.8)
+                enemigo.salud -= danio
+                console.print(f"Golpeas e infliges [yellow]{danio}[/] de daño.")
+            elif accion == "2":
+                if getattr(jugador,'poder_usos',0) > 0:
+                    play_effect(os.path.join(os.path.dirname(__file__), "Player Effects", "SWORD-1.wav"))
+                    danio = jugador.danio + 10
+                    enemigo.salud -= danio
+                    jugador.poder_usos -= 1
+                    console.print(f"Usas tu poder especial y haces [yellow]{danio}[/] de daño!")
+                else:
+                    console.print("[dim]No te quedan usos del poder.[/]")
+                    continue
+            elif accion == "3":
+                defensa = True
+                play_effect(os.path.join(os.path.dirname(__file__), "Player Effects", "SHIELD-1.wav"))
+                console.print("Te preparas para reducir el daño entrante.")
+            elif accion == "4":
+                curar = min(15, jugador.salud_max - jugador.salud)
+                jugador.salud += curar
+                console.print(f"Recuperas [green]{curar}[/] de salud.")
+            else:
+                console.print("[red]Acción no válida[/]")
+                continue
+            # turno enemigo
+            if enemigo.salud > 0:
+                import random
+                base = enemigo.danio
+                tipo = random.choice(["normal","fuerte"]) if etapa>1 else "normal"
+                if tipo == "fuerte":
+                    base += 5
+                if defensa:
+                    base//=2
+                    defensa=False
+                # habilidades
+                if hasattr(enemigo,'habilidades'):
+                    hab = enemigo.habilidades
+                    if 'sangrado' in hab and random.random() < hab['sangrado']:
+                        extra = 4
+                        console.print("[red]El lobo te desgarra y causa sangrado (+4).[/]")
+                        base += extra
+                    if 'drain' in hab and random.random() < hab['drain']:
+                        dr = 6
+                        console.print("[magenta]El espectro absorbe tu energía (+6).[/]")
+                        enemigo.salud = min(enemigo.salud+dr, enemigo.salud_max)
+                    if 'stun' in hab and random.random() < hab['stun']:
+                        console.print("[bold red]La guardiana te aturde: pierdes el próximo 10% de daño.")
+                        jugador.danio = max(1, int(jugador.danio*0.9))
+                jugador.salud -= base
+                console.print(f"Recibes [red]{base}[/] de daño.")
+            time.sleep(0.4)
+        if jugador.salud>0:
+            console.print(f"\n[bold green]¡Has derrotado a {enemigo.nombre}![/]")
+            play_effect(os.path.join(os.path.dirname(__file__), "Sound Effects", "WINBATTLE-1.wav"))
+            # escalar progreso
+            jugador.nivel_progreso = getattr(jugador,'nivel_progreso',0)+1
+            return proxima_escena
+        else:
+            return handle_derrota(jugador)
+    return _accion
+
+# ------------------- LABERINTO DINÁMICO ------------------- #
+def generar_laberinto(tam):
+    import random
+    # Representación simple: 0 pared, 1 camino
+    ancho = alto = tam
+    lab = [[0]*ancho for _ in range(alto)]
+    # Carvar con DFS
+    dirs = [(1,0),(-1,0),(0,1),(0,-1)]
+    def carve(x,y):
+        lab[y][x]=1
+        random.shuffle(dirs)
+        for dx,dy in dirs:
+            nx,ny = x+dx*2, y+dy*2
+            if 0<=nx<ancho and 0<=ny<alto and lab[ny][nx]==0:
+                lab[y+dy][x+dx]=1
+                carve(nx,ny)
+    carve(0,0)
+    lab[alto-1][ancho-1]=1
+    return lab
+
+def laberinto_action(jugador):
+    console = Console()
+    dificultad = getattr(jugador,'nivel_progreso',0)
+    tam = 7 if dificultad<2 else (9 if dificultad<4 else 11)
+    console.print(f"[bold cyan]Entras a un laberinto místico (tamaño {tam}x{tam}). Encuentra la salida (X). Usa WASD.[/]")
+    lab = generar_laberinto(tam)
+    px,py = 0,0
+    ex,ey = tam-1,tam-1
+    pasos_max = tam*tam*2
+    pasos = 0
+    trampa_intervalo = max(6, tam//2)
+    while (px,py)!=(ex,ey) and pasos<pasos_max and jugador.salud>0:
+        # vista parcial 5x5
+        vista=""
+        for y in range(max(0,py-2), min(tam,py+3)):
+            fila=""
+            for x in range(max(0,px-2), min(tam,px+3)):
+                if (x,y)==(px,py): fila+="P"
+                elif (x,y)==(ex,ey): fila+="X"
+                else: fila += "." if lab[y][x]==1 else "#"
+            vista+=fila+"\n"
+        console.print(f"[green]{vista}[/]")
+        mov = input("Movimiento (w/a/s/d, q salir): ").strip().lower()
+        if mov=='q':
+            return "final_oscuro"
+        dx=dy=0
+        if mov=='w': dy=-1
+        elif mov=='s': dy=1
+        elif mov=='a': dx=-1
+        elif mov=='d': dx=1
+        else:
+            console.print("[dim]Entrada no válida[/]")
+            continue
+        nx,ny = px+dx, py+dy
+        if 0<=nx<tam and 0<=ny<tam and lab[ny][nx]==1:
+            px,py = nx,ny
+            pasos+=1
+            # trampa periódica
+            if pasos % trampa_intervalo == 0 and pasos>0:
+                import random
+                if random.random()<0.5:
+                    danio = 5 + dificultad*3
+                    jugador.salud -= danio
+                    console.print(f"[red]Una trampa oculta te hiere (-{danio}). Salud: {jugador.salud}[/]")
+        else:
+            console.print("[yellow]Golpeas una pared.[/]")
+    if (px,py)==(ex,ey) and jugador.salud>0:
+        console.print("[bold green]¡Escapas del laberinto! Sientes que has crecido en experiencia." )
+        jugador.nivel_progreso = getattr(jugador,'nivel_progreso',0)+1
+        # decidir hacia dónde conduce
+        return "montaña" if jugador.tiene_piedra else "cueva"
+    console.print("[bold red]Fracaso en el laberinto...[/]")
+    return "final_oscuro"
+
 def combate(jugador):
     console = Console()
     enemigo = Enemigo()
@@ -194,14 +455,12 @@ def combate(jugador):
         console.print("4. Curarse (+15 salud)")
         accion = input("Acción (1-4): ").strip()
         if accion == "1":
-            # Efecto de espada
             play_effect(os.path.join(os.path.dirname(__file__), "Player Effects", "SWORD-1.wav"))
             danio = jugador.danio
             console.print(f"Atacas y haces [yellow]{danio}[/] de daño.")
             enemigo.salud -= danio
         elif accion == "2":
             if jugador.poder_usos > 0:
-                # Poder especial también usa efecto de espada
                 play_effect(os.path.join(os.path.dirname(__file__), "Player Effects", "SWORD-1.wav"))
                 danio = jugador.danio + 10
                 console.print(f"Usas tu poder especial '{jugador.poder}' y haces [yellow]{danio}[/] de daño!")
@@ -210,7 +469,6 @@ def combate(jugador):
             else:
                 console.print("[dim]Ya no puedes usar tu poder especial.[/]")
         elif accion == "3":
-            # Efecto de escudo al defender
             play_effect(os.path.join(os.path.dirname(__file__), "Player Effects", "SHIELD-1.wav"))
             console.print("Te preparas para defenderte. El daño recibido se reduce a la mitad este turno.")
             defensa = True
@@ -221,7 +479,6 @@ def combate(jugador):
         else:
             console.print("[red]Acción no válida.[/]")
             continue
-        # Turno del enemigo si sigue vivo
         if enemigo.salud > 0:
             import random
             ataque = random.choice(["normal", "fuerte"])
@@ -239,103 +496,10 @@ def combate(jugador):
         time.sleep(0.5)
     if jugador.salud > 0:
         console.print("\n[bold green]¡Has vencido a la bestia![/]")
-        # reproducir sonido de victoria
         play_effect(os.path.join(os.path.dirname(__file__), "Sound Effects", "WINBATTLE-1.wav"))
-    else:
-        console.print("\n[bold red]La bestia te ha derrotado...[/]")
-        # Detener música de pelea inmediatamente (openal o winsound)
-        try:
-            global FIGHT_AUDIO_REF
-            if FIGHT_AUDIO_REF.get("src") is not None:
-                try:
-                    FIGHT_AUDIO_REF["src"].stop()
-                except Exception:
-                    pass
-            if FIGHT_AUDIO_REF.get("winsound") and sys.platform.startswith("win"):
-                try:
-                    import winsound
-                    winsound.PlaySound(None, 0)
-                except Exception:
-                    pass
-            # limpiar referencia
-            FIGHT_AUDIO_REF["src"] = None
-            FIGHT_AUDIO_REF["winsound"] = False
-        except Exception:
-            pass
-        # Reproducir sonidos de derrota simultáneamente (preferir openal)
-        base_dir = os.path.dirname(__file__)
-        fail_path = os.path.join(base_dir, "Music", "FAILBATTLE-1.wav")
-        lose_path = os.path.join(base_dir, "Sound Effects", "LOSE-1.wav")
-        played_openal = False
-        defeat_winsound = False
-        try:
-            from openal import oalOpen
-            fuentes = []
-            for p in (fail_path, lose_path):
-                if os.path.exists(p):
-                    try:
-                        s = oalOpen(p)
-                        if s is not None:
-                            s.play()
-                            fuentes.append(s)
-                    except Exception:
-                        pass
-            if fuentes:
-                played_openal = True
-                try:
-                    from __main__ import DEFEAT_AUDIO
-                    DEFEAT_AUDIO["sources"] = fuentes
-                    DEFEAT_AUDIO["winsound"] = False
-                except Exception:
-                    pass
-        except Exception:
-            pass
-        if not played_openal:
-            # Fallback: reproducir en secuencia (winsound u otro) si no se pudo con openal
-            play_effect(fail_path)
-            play_effect(lose_path)
-            if sys.platform.startswith("win"):
-                defeat_winsound = True
-                try:
-                    from __main__ import DEFEAT_AUDIO
-                    DEFEAT_AUDIO["sources"] = []
-                    DEFEAT_AUDIO["winsound"] = True
-                except Exception:
-                    pass
-        # Preguntar si se desea reiniciar la aventura
-        while True:
-            try:
-                resp = input("¿Quieres intentarlo de nuevo desde el inicio? (s/n): ").strip().lower()
-            except (KeyboardInterrupt, EOFError):
-                resp = 'n'
-            if resp.startswith('s'):
-                # detener sonidos de derrota antes de reiniciar
-                try:
-                    from __main__ import DEFEAT_AUDIO
-                    for s in DEFEAT_AUDIO.get("sources", []):
-                        try:
-                            s.stop()
-                        except Exception:
-                            pass
-                    if DEFEAT_AUDIO.get("winsound") and sys.platform.startswith("win"):
-                        try:
-                            import winsound
-                            winsound.PlaySound(None, 0)
-                        except Exception:
-                            pass
-                    DEFEAT_AUDIO["sources"] = []
-                    DEFEAT_AUDIO["winsound"] = False
-                except Exception:
-                    pass
-                if hasattr(jugador, 'restaurar'):
-                    jugador.restaurar()
-                return "reiniciar"  # indicador especial para el bucle del juego
-            if resp.startswith('n') or resp == '':
-                return "final_oscuro"
-            console.print("[yellow]Opción no válida. Responde s o n.[/]")
-    return "post_pelea"
-
-
+        jugador.nivel_progreso = max(getattr(jugador, 'nivel_progreso', 0), 1)
+    return "sendero_profundo"
+    return handle_derrota(jugador)
 
 def main():
     console = Console()
@@ -693,8 +857,9 @@ class Juego:
             # Acción especial de la escena (si tiene)
             siguiente_accion = None
             if escena.accion:
-                # Si vamos a entrar en combate, cambiar a música de pelea
-                was_fight = (self.escena_actual == "combate")
+                # Si vamos a entrar en combate, cambiar a música de pelea (todas las variantes)
+                combate_scenes = {"combate","combate_lobo","combate_espectro","combate_guardiana"}
+                was_fight = (self.escena_actual in combate_scenes)
                 if was_fight:
                     try:
                         # detener música de aventura si está con openal
@@ -1256,7 +1421,9 @@ def crear_escenas():
         "encrucijada": Escena(
             "La encrucijada",
             "Siguiendo tu camino llegas a una encrucijada. El viento sopla fuerte y las hojas crujen bajo tus pies.",
-            {"Avanzar": "pelea"}
+            {"Avanzar": "pelea",
+             "Tomar el sendero sombrío": "sendero_sombrio",
+             "Explorar el claro antiguo": "claro_antiguo"}
         ),
         "pelea": Escena(
             "¡Combate!",
@@ -1264,17 +1431,117 @@ def crear_escenas():
             {"Luchar": "combate"},
             accion=None
         ),
+        # Ruta alternativa - enemigo 1
+        "sendero_sombrio": Escena(
+            "Sendero sombrío",
+            "La luz casi no atraviesa las copas. Un gruñido se escucha entre los arbustos.",
+            {"Avanzar sigilosamente": "combate_lobo", "Retroceder": "encrucijada"}
+        ),
+        "combate_lobo": Escena(
+            "Combate: Lobo",
+            "Un Lobo Sombrío salta hacia ti.",
+            {},
+            accion=combate_personalizado(1, "bosque_bruma")
+        ),
+        # Claro antiguo con trampa y ruta a laberinto
+        "claro_antiguo": Escena(
+            "Claro antiguo",
+            "Piedras cubiertas de musgo forman un círculo. Algo de magia antigua persiste.",
+            {"Investigar las ruinas": "trampa_enredaderas", "Seguir entre las piedras": "ruinas", "Regresar": "encrucijada"}
+        ),
+        "trampa_enredaderas": Escena(
+            "Trampa de enredaderas",
+            "Enredaderas vivas aprietan tus piernas infligiendo dolor.",
+            {},
+            accion=lambda j: (setattr(j,'salud', max(1,j.salud- (8 + getattr(j,'nivel_progreso',0)*3))) or "ruinas")
+        ),
+        "ruinas": Escena(
+            "Ruinas antiguas",
+            "Un arco derruido revela un corredor serpenteante: tal vez un laberinto.",
+            {"Entrar al laberinto": "laberinto", "Regresar": "encrucijada"}
+        ),
+        "laberinto": Escena(
+            "Laberinto místico",
+            "Un susurro te guía y te confunde a la vez.",
+            {},
+            accion=laberinto_action
+        ),
+        # Combates avanzados disponibles tras progreso
+        "combate_espectro": Escena(
+            "Combate: Espectro",
+            "La temperatura baja; un espectro emerge.",
+            {},
+            accion=combate_personalizado(2, "claro_corrupto")
+        ),
+        "combate_guardiana": Escena(
+            "Combate: Guardiana Corrompida",
+            "La guardiana final intenta impedir tu avance.",
+            {},
+            accion=combate_personalizado(3, "claro_final")
+        ),
         "combate": Escena(
             "Combate contra la bestia",
             "¡Prepárate para pelear!",
             {},
             accion=combate
         ),
-        "post_pelea": Escena(
-            "Después del combate",
-            "Tras vencer a la bestia, puedes elegir tu destino final.",
-            {"Ir hacia la montaña": "montaña",
-             "Ir hacia la cueva iluminada": "cueva"}
+        # Nueva progresión orgánica tras cada victoria
+        "sendero_profundo": Escena(
+            "Sendero profundo",
+            "Tras la victoria, avanzas por un sendero que se estrecha. El bosque parece observarte.",
+            {"Seguir huellas profundas": "combate_lobo", "Seguir susurros lejanos": "claro_susurros", "Tomar un breve descanso": "descanso_breve"}
+        ),
+        "claro_susurros": Escena(
+            "Claro de susurros",
+            "Los susurros te rodean; una figura lupina emerge entre la niebla.",
+            {},
+            accion=lambda j: "combate_lobo"
+        ),
+        "descanso_breve": Escena(
+            "Descanso breve",
+            "Encuentras un tronco donde recuperas el aliento (+8 salud).",
+            {},
+            accion=lambda j: (setattr(j, 'salud', min(j.salud_max, j.salud+8)) or "sendero_profundo")
+        ),
+        "bosque_bruma": Escena(
+            "Bosque de bruma",
+            "Una bruma fría serpentea entre los árboles, distorsionando formas.",
+            {"Avanzar hacia la bruma densa": "combate_espectro", "Rodear buscando claridad": "trampa_bruma", "Buscar una luz titilante": "luz_bruma"}
+        ),
+        "trampa_bruma": Escena(
+            "Trampa en la bruma",
+            "Tropezas con raíces ocultas (-6 salud).",
+            {},
+            accion=lambda j: (setattr(j,'salud', max(1, j.salud-6)) or "combate_espectro")
+        ),
+        "luz_bruma": Escena(
+            "Luz titilante",
+            "Una luz cálida alivia tus heridas (+5 salud) antes de desvanecerse.",
+            {},
+            accion=lambda j: (setattr(j,'salud', min(j.salud_max, j.salud+5)) or "combate_espectro")
+        ),
+        "claro_corrupto": Escena(
+            "Claro corrupto",
+            "El suelo palpita con energía oscura alrededor de un corazón de corrupción.",
+            {"Enfrentar el corazón": "combate_guardiana", "Intentar purificar el aire": "purificacion_fallida", "Retirarse momentáneamente": "reagrupacion"}
+        ),
+        "purificacion_fallida": Escena(
+            "Purificación fallida",
+            "La corrupción te hiere (-10 salud) mientras intentas dispersarla.",
+            {},
+            accion=lambda j: (setattr(j,'salud', max(1, j.salud-10)) or "combate_guardiana")
+        ),
+        "reagrupacion": Escena(
+            "Reagrupación",
+            "Respiras hondo y recuperas fuerzas (+6 salud).",
+            {},
+            accion=lambda j: (setattr(j,'salud', min(j.salud_max, j.salud+6)) or "claro_corrupto")
+        ),
+        "claro_final": Escena(
+            "Eco de la guardiana",
+            "Con la guardiana derrotada, sientes caminos que se abren hacia un destino mayor.",
+            {},
+            accion=lambda j: ("montaña" if getattr(j,'tiene_piedra', False) else "cueva")
         ),
 
         "montaña": Escena(
