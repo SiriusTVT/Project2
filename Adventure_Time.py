@@ -7,6 +7,11 @@ import os
 # se puede ajustar con la función `seleccionar_velocidad`
 TEXT_SPEED = 0.03
 
+# Referencia global para música de combate para poder detenerla inmediatamente al derrotar al jugador
+FIGHT_AUDIO_REF = {"src": None, "winsound": False}
+# Referencias para audio de derrota (FAILBATTLE / LOSE)
+DEFEAT_AUDIO = {"sources": [], "winsound": False}
+
 
 def _play_sfx(filepath):
     """Reproduce un efecto de sonido corto de forma no bloqueante.
@@ -95,6 +100,14 @@ class Personaje:
         }
         self.poder = self.poderes.get(self.clase, 'Ataque básico')
 
+    def restaurar(self):
+        """Restaura el estado básico del personaje para reiniciar la aventura."""
+        self.salud = self.salud_max
+        # Reiniciar usos del poder especial si existían
+        self.poder_usos = 2
+        # Quitar progreso clave de la historia
+        self.tiene_piedra = False
+
 class Enemigo:
     def __init__(self, nombre="Bestia sombría", salud=80, danio=12):
         self.nombre = nombre
@@ -172,11 +185,31 @@ def combate(jugador):
         _play_sfx(os.path.join(os.path.dirname(__file__), "Sound Effects", "WINBATTLE-1.wav"))
     else:
         console.print("\n[bold red]La bestia te ha derrotado...[/]")
+        # Detener música de pelea inmediatamente (openal o winsound)
+        try:
+            global FIGHT_AUDIO_REF
+            if FIGHT_AUDIO_REF.get("src") is not None:
+                try:
+                    FIGHT_AUDIO_REF["src"].stop()
+                except Exception:
+                    pass
+            if FIGHT_AUDIO_REF.get("winsound") and sys.platform.startswith("win"):
+                try:
+                    import winsound
+                    winsound.PlaySound(None, 0)
+                except Exception:
+                    pass
+            # limpiar referencia
+            FIGHT_AUDIO_REF["src"] = None
+            FIGHT_AUDIO_REF["winsound"] = False
+        except Exception:
+            pass
         # Reproducir sonidos de derrota simultáneamente (preferir openal)
         base_dir = os.path.dirname(__file__)
         fail_path = os.path.join(base_dir, "Music", "FAILBATTLE-1.wav")
         lose_path = os.path.join(base_dir, "Sound Effects", "LOSE-1.wav")
         played_openal = False
+        defeat_winsound = False
         try:
             from openal import oalOpen
             fuentes = []
@@ -191,14 +224,57 @@ def combate(jugador):
                         pass
             if fuentes:
                 played_openal = True
+                try:
+                    from __main__ import DEFEAT_AUDIO
+                    DEFEAT_AUDIO["sources"] = fuentes
+                    DEFEAT_AUDIO["winsound"] = False
+                except Exception:
+                    pass
         except Exception:
             pass
         if not played_openal:
             # Fallback: reproducir en secuencia (winsound u otro) si no se pudo con openal
             _play_sfx(fail_path)
             _play_sfx(lose_path)
-    if jugador.salud <= 0:
-        return "final_oscuro"
+            if sys.platform.startswith("win"):
+                defeat_winsound = True
+                try:
+                    from __main__ import DEFEAT_AUDIO
+                    DEFEAT_AUDIO["sources"] = []
+                    DEFEAT_AUDIO["winsound"] = True
+                except Exception:
+                    pass
+        # Preguntar si se desea reiniciar la aventura
+        while True:
+            try:
+                resp = input("¿Quieres intentarlo de nuevo desde el inicio? (s/n): ").strip().lower()
+            except (KeyboardInterrupt, EOFError):
+                resp = 'n'
+            if resp.startswith('s'):
+                # detener sonidos de derrota antes de reiniciar
+                try:
+                    from __main__ import DEFEAT_AUDIO
+                    for s in DEFEAT_AUDIO.get("sources", []):
+                        try:
+                            s.stop()
+                        except Exception:
+                            pass
+                    if DEFEAT_AUDIO.get("winsound") and sys.platform.startswith("win"):
+                        try:
+                            import winsound
+                            winsound.PlaySound(None, 0)
+                        except Exception:
+                            pass
+                    DEFEAT_AUDIO["sources"] = []
+                    DEFEAT_AUDIO["winsound"] = False
+                except Exception:
+                    pass
+                if hasattr(jugador, 'restaurar'):
+                    jugador.restaurar()
+                return "reiniciar"  # indicador especial para el bucle del juego
+            if resp.startswith('n') or resp == '':
+                return "final_oscuro"
+            console.print("[yellow]Opción no válida. Responde s o n.[/]")
     return "post_pelea"
 
 
@@ -350,6 +426,10 @@ def mostrar_intro(console):
         except Exception:
             console.print(f"[yellow]Audio no disponible ({e}). Continuando sin música.[/]")
 
+    # referencia a narración para poder detenerla
+    narr_source = None
+    narr_winsound = False
+
     if not skip_intro:
         # Reproducir narración (NARRADOR.wav) si existe
         try:
@@ -358,15 +438,16 @@ def mostrar_intro(console):
                 # intentar openal primero para no cortar la música intro
                 try:
                     from openal import oalOpen
-                    narr_src = oalOpen(narr_path)
-                    if narr_src is not None:
-                        narr_src.play()
+                    narr_source = oalOpen(narr_path)
+                    if narr_source is not None:
+                        narr_source.play()
                 except Exception:
                     # fallback winsound (esto reemplazará la música intro si se usa winsound)
                     if sys.platform.startswith("win"):
                         try:
                             import winsound
                             winsound.PlaySound(narr_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+                            narr_winsound = True
                         except Exception:
                             pass
         except Exception:
@@ -382,11 +463,38 @@ def mostrar_intro(console):
         try:
             respuesta = input("¿Estás listo para la aventura? (s/n): ").strip().lower()
         except (KeyboardInterrupt, EOFError):
+            # detener narración antes de salir
+            try:
+                if narr_source:
+                    narr_source.stop()
+                if narr_winsound and sys.platform.startswith("win"):
+                    import winsound
+                    winsound.PlaySound(None, 0)
+            except Exception:
+                pass
             console.print("Entrada interrumpida. Saliendo...", style="bold red")
             return None
         if not respuesta or not respuesta.startswith('s'):
+            # detener narración antes de terminar
+            try:
+                if narr_source:
+                    narr_source.stop()
+                if narr_winsound and sys.platform.startswith("win"):
+                    import winsound
+                    winsound.PlaySound(None, 0)
+            except Exception:
+                pass
             console.print("No estás listo para la aventura. Hasta la próxima.", style="yellow")
             return None
+        # detener narración al iniciar la aventura
+        try:
+            if narr_source:
+                narr_source.stop()
+            if narr_winsound and sys.platform.startswith("win"):
+                import winsound
+                winsound.PlaySound(None, 0)
+        except Exception:
+            pass
         console.print("¡Perfecto! La aventura comienza...", style="bold magenta")
     else:
         console.print("[dim]Introducción omitida. Pasando a la configuración del personaje...[/]")
@@ -532,6 +640,12 @@ class Juego:
                                         f_src.play()
                                         self.fight_src = f_src
                                         self.fight_winsound = False
+                                        try:
+                                            from __main__ import FIGHT_AUDIO_REF
+                                            FIGHT_AUDIO_REF["src"] = f_src
+                                            FIGHT_AUDIO_REF["winsound"] = False
+                                        except Exception:
+                                            pass
                                 except Exception:
                                     pass
                             else:
@@ -542,6 +656,12 @@ class Juego:
                                         winsound.PlaySound(fight_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
                                         self.fight_src = None
                                         self.fight_winsound = True
+                                        try:
+                                            from __main__ import FIGHT_AUDIO_REF
+                                            FIGHT_AUDIO_REF["src"] = None
+                                            FIGHT_AUDIO_REF["winsound"] = True
+                                        except Exception:
+                                            pass
                                     except Exception:
                                         # intentar openal como fallback
                                         try:
@@ -551,6 +671,12 @@ class Juego:
                                                 f_src.play()
                                                 self.fight_src = f_src
                                                 self.fight_winsound = False
+                                                try:
+                                                    from __main__ import FIGHT_AUDIO_REF
+                                                    FIGHT_AUDIO_REF["src"] = f_src
+                                                    FIGHT_AUDIO_REF["winsound"] = False
+                                                except Exception:
+                                                    pass
                                         except Exception:
                                             pass
                     except Exception:
@@ -590,6 +716,14 @@ class Juego:
                                     self.bg_audio_source.play()
                                 except Exception:
                                     pass
+                        else:
+                            # Derrota: detener explícitamente winsound de pelea si estaba activo
+                            if self.fight_winsound and sys.platform.startswith("win"):
+                                try:
+                                    import winsound
+                                    winsound.PlaySound(None, 0)
+                                except Exception:
+                                    pass
                         self.fight_winsound = False
                         # En caso de derrota, dejamos la música de aventura detenida.
                     except Exception:
@@ -600,6 +734,33 @@ class Juego:
 
             # Si la acción especial retorna una escena, saltar a esa escena directamente
             if siguiente_accion:
+                # Manejo especial: reiniciar juego tras derrota
+                if siguiente_accion == "reiniciar":
+                    # Detener música de pelea si hubiera quedado algo sonando
+                    try:
+                        if self.fight_src is not None:
+                            self.fight_src.stop()
+                    except Exception:
+                        pass
+                    self.fight_src = None
+                    self.fight_winsound = False
+                    # Reanudar (o iniciar) música de aventura si estaba pausada por la pelea
+                    try:
+                        adv_path = os.path.join(os.path.dirname(__file__), "Music", "ADVENTURE-1.wav")
+                        if self.bg_audio_source is not None:
+                            # si existe fuente openal, reproducir
+                            self.bg_audio_source.play()
+                        else:
+                            # si previamente se usó winsound para bg
+                            if sys.platform.startswith("win"):
+                                if self.winsound_used and os.path.exists(adv_path):
+                                    import winsound
+                                    winsound.PlaySound(adv_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+                    except Exception:
+                        pass
+                    # Reiniciar escena al inicio
+                    self.escena_actual = "inicio"
+                    continue
                 self.escena_actual = siguiente_accion
                 continue
 
