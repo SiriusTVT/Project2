@@ -678,6 +678,9 @@ class Juego:
         # referencia para sonido ambiente del río
         self.river_src = None
         self.river_winsound = False
+        # referencia para sonido ambiente de cueva
+        self.cave_src = None
+        self.cave_winsound = False
         # referencias para música de combate
         self.fight_src = None
         self.fight_winsound = False
@@ -752,6 +755,14 @@ class Juego:
                                     from openal import oalOpen
                                     f_src = oalOpen(fight_path)
                                     if f_src is not None:
+                                        # Ajustar volumen de la música de pelea al 30%
+                                        try:
+                                            f_src.set_gain(0.3)
+                                        except Exception:
+                                            try:
+                                                f_src.gain = 0.3
+                                            except Exception:
+                                                pass
                                         f_src.play()
                                         self.fight_src = f_src
                                         self.fight_winsound = False
@@ -783,6 +794,14 @@ class Juego:
                                             from openal import oalOpen
                                             f_src = oalOpen(fight_path)
                                             if f_src is not None:
+                                                # Ajustar volumen al 30% también en este fallback
+                                                try:
+                                                    f_src.set_gain(0.3)
+                                                except Exception:
+                                                    try:
+                                                        f_src.gain = 0.3
+                                                    except Exception:
+                                                        pass
                                                 f_src.play()
                                                 self.fight_src = f_src
                                                 self.fight_winsound = False
@@ -895,6 +914,19 @@ class Juego:
             except Exception:
                 opcion_elegida_texto = ""
 
+            # Reproducir sonido de cofre al abrirlo (CHEST-1.wav) y evitar que se sobreescriba inmediatamente
+            chest_open_played = False
+            try:
+                if self.escena_actual == "cofre" and "abrir" in opcion_elegida_texto.lower():
+                    chest_path = os.path.join(os.path.dirname(__file__), "Sound Effects", "CHEST-1.wav")
+                    if os.path.exists(chest_path):
+                        play_effect(chest_path)
+                        chest_open_played = True
+                        # timestamp opcional para futuras lógicas si se requiere
+                        self._last_chestopen_time = time.time()
+            except Exception:
+                pass
+
             # Si estamos en la escena del río y se eligió "Cruzar el río", reproducir CROSSRIVER-1.wav
             try:
                 if self.escena_actual == "rio":
@@ -939,11 +971,30 @@ class Juego:
             except Exception:
                 pass
 
+            # Si estamos saliendo de la cueva, detener ambiente de cueva
+            try:
+                if self.escena_actual == "cueva" and siguiente != "cueva":
+                    try:
+                        if self.cave_src is not None:
+                            self.cave_src.stop()
+                    except Exception:
+                        pass
+                    self.cave_src = None
+                    if self.cave_winsound and sys.platform.startswith("win"):
+                        try:
+                            import winsound
+                            winsound.PlaySound(None, 0)
+                        except Exception:
+                            pass
+                    self.cave_winsound = False
+            except Exception:
+                pass
+
             # Reproducir sonido de selección al elegir una opción válida
             try:
                 # Evitar solapar con CROSSRIVER si acaba de sonar hace < 0.4s
                 recent_cross = hasattr(self, "_last_crossriver_time") and (time.time() - getattr(self, "_last_crossriver_time")) < 0.4
-                if not recent_cross:
+                if not recent_cross and not chest_open_played:
                     sfx_path = os.path.join(os.path.dirname(__file__), "Sound Effects", "SELECT3-1.wav")
                     if os.path.exists(sfx_path):
                         play_effect(sfx_path)
@@ -956,7 +1007,7 @@ class Juego:
                     # No reproducir pasos si CROSSRIVER acaba de sonar (ventana 0.5s)
                     recent_cross = hasattr(self, "_last_crossriver_time") and (time.time() - getattr(self, "_last_crossriver_time")) < 0.5
                     cruzando = (self.escena_actual == "rio" and "cruzar" in opcion_elegida_texto.lower())
-                    if not cruzando and not recent_cross:
+                    if not cruzando and not recent_cross and not chest_open_played:
                         base_dir = os.path.dirname(__file__)
                         step_path = os.path.join(base_dir, "Sound Effects", "FORESTWALK-1.wav") if siguiente in TERRAIN_FOREST else os.path.join(base_dir, "Sound Effects", "SOLIDWALK-1.wav")
                         if os.path.exists(step_path):
@@ -1000,6 +1051,48 @@ class Juego:
             except Exception:
                 pass
 
+            # Si el siguiente estado es 'cueva', reproducir ambiente de cueva similar al río
+            try:
+                if siguiente == "cueva":
+                    cave_path = os.path.join(os.path.dirname(__file__), "Sound Effects", "CAVE-1.wav")
+                    if os.path.exists(cave_path):
+                        # Preferir openal para no interferir con pasos (que usan play_effect)
+                        try:
+                            from openal import oalOpen
+                            c_src = oalOpen(cave_path)
+                            if c_src is not None:
+                                # bajar volumen al 25% para que no opaque otros efectos
+                                try:
+                                    c_src.set_gain(0.25)
+                                except Exception:
+                                    try:
+                                        c_src.gain = 0.25
+                                    except Exception:
+                                        pass
+                                # intentar loop si la implementación lo permite
+                                try:
+                                    c_src.set_looping(True)
+                                except Exception:
+                                    try:
+                                        c_src.looping = True
+                                    except Exception:
+                                        pass
+                                c_src.play()
+                                self.cave_src = c_src
+                                self.cave_winsound = False
+                        except Exception:
+                            # fallback winsound solo si no se está usando winsound para música principal para minimizar cortes
+                            if sys.platform.startswith("win") and not self.winsound_used:
+                                try:
+                                    import winsound
+                                    winsound.PlaySound(cave_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+                                    self.cave_src = None
+                                    self.cave_winsound = True
+                                except Exception:
+                                    pass
+            except Exception:
+                pass
+
             # Si la escena es un final, terminar
             if siguiente.startswith("final"):
                 self.console.print("\n[bold red]--- FIN DEL JUEGO ---[/]\n")
@@ -1036,6 +1129,22 @@ class Juego:
                         except Exception:
                             pass
                     self.river_winsound = False
+
+                    # cueva (openal)
+                    try:
+                        if self.cave_src is not None:
+                            self.cave_src.stop()
+                    except Exception:
+                        pass
+                    self.cave_src = None
+                    # cueva (winsound)
+                    if self.cave_winsound and sys.platform.startswith("win"):
+                        try:
+                            import winsound
+                            winsound.PlaySound(None, 0)
+                        except Exception:
+                            pass
+                    self.cave_winsound = False
 
                     if self.bg_audio_source:
                         self.bg_audio_source.stop()
