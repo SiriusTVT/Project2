@@ -854,6 +854,30 @@ class Juego:
         while True:
             escena = self.escenas[self.escena_actual]
 
+            # Manejo directo si ya estamos en un final (por ejemplo tras derrota -> final_oscuro)
+            if self.escena_actual.startswith("final"):
+                self.console.print("\n[bold red]--- FIN DEL JUEGO ---[/]\n")
+                escena.mostrar(self.console)
+                if self.escena_actual == "final_oscuro":
+                    try:
+                        input("Presiona Enter para finalizar...")
+                    except (KeyboardInterrupt, EOFError):
+                        pass
+                # Detener audios (reutiliza lógica existente simplificada)
+                try:
+                    for src_name in ["fight_src","river_src","cave_src","bg_audio_source"]:
+                        src = getattr(self, src_name, None)
+                        if src is not None:
+                            try: src.stop()
+                            except Exception: pass
+                        setattr(self, src_name, None)
+                    if sys.platform.startswith("win"):
+                        import winsound
+                        winsound.PlaySound(None, 0)
+                except Exception:
+                    pass
+                break
+
             # Acción especial de la escena (si tiene)
             siguiente_accion = None
             if escena.accion:
@@ -1299,6 +1323,11 @@ class Juego:
             if siguiente.startswith("final"):
                 self.console.print("\n[bold red]--- FIN DEL JUEGO ---[/]\n")
                 self.escenas[siguiente].mostrar(self.console)
+                if siguiente == "final_oscuro":
+                    try:
+                        input("Presiona Enter para finalizar...")
+                    except (KeyboardInterrupt, EOFError):
+                        pass
                 # detener música de fondo si existe y ambiente del río si estuviera activo
                 try:
                     # pelea
