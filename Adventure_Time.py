@@ -326,7 +326,27 @@ def mostrar_intro(console):
             console.print(f"[yellow]Audio no disponible ({e}). Continuando sin música.[/]")
 
     if not skip_intro:
-        # (sin audio) continuar con la introducción
+        # Reproducir narración (NARRADOR.wav) si existe
+        try:
+            narr_path = os.path.join(os.path.dirname(__file__), "Music", "NARRADOR.wav")
+            if os.path.exists(narr_path):
+                # intentar openal primero para no cortar la música intro
+                try:
+                    from openal import oalOpen
+                    narr_src = oalOpen(narr_path)
+                    if narr_src is not None:
+                        narr_src.play()
+                except Exception:
+                    # fallback winsound (esto reemplazará la música intro si se usa winsound)
+                    if sys.platform.startswith("win"):
+                        try:
+                            import winsound
+                            winsound.PlaySound(narr_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+        # continuar con la introducción
         for parte in get_intro_lines():
             typewriter(parte, console=console, style="bold green")
             # pausa entre párrafos proporcional a la velocidad (más rápida -> menos pausa)
