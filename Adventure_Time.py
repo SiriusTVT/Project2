@@ -996,19 +996,42 @@ def mostrar_intro(console):
     if not nombre:
         nombre = "Aventurero"
 
-    try:
-        clase = input("Elige una clase (guerrero/mago/explorador/ladron): ").strip().lower()
-    except (KeyboardInterrupt, EOFError):
-        console.print("Entrada interrumpida. Saliendo...", style="bold red")
-        # detener audio si estaba sonando
+    # Selección de clase con colores
+    clases_validas = {
+        'guerrero': 'bold red',
+        'mago': 'bold blue',
+        'explorador': 'bold green',
+        'ladron': 'bold yellow'
+    }
+    while True:
         try:
-            if audio_source:
-                audio_source.stop()
-            if _oal_quit:
-                _oal_quit()
-        except Exception:
-            pass
-        return None
+            console.print("\nElige una clase:")
+            for cname, style in clases_validas.items():
+                desc = {
+                    'guerrero': 'Alta salud y fuerza estable',
+                    'mago': 'Baja salud, alto daño explosivo',
+                    'explorador': 'Balanceado y versátil',
+                    'ladron': 'Rápido con daño crítico'
+                }.get(cname, '')
+                # Usar etiqueta de apertura y cierre explícita para estilos compuestos
+                console.print(f"  • [{style}]{cname.title()}[/{style}] - {desc}")
+            clase = input("Clase (guerrero/mago/explorador/ladron): ").strip().lower()
+        except (KeyboardInterrupt, EOFError):
+            console.print("Entrada interrumpida. Saliendo...", style="bold red")
+            try:
+                if audio_source:
+                    audio_source.stop()
+                if _oal_quit:
+                    _oal_quit()
+            except Exception:
+                pass
+            return None
+        if clase in clases_validas:
+            sel_style = clases_validas[clase]
+            console.print(f"Has elegido: [{sel_style}]{clase.title()}[/{sel_style}]", style="bold white")
+            break
+        else:
+            console.print("Clase no válida. Intenta nuevamente.", style="bold red")
 
     # el jugador ya configuró el personaje
 
