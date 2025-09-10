@@ -1,4 +1,5 @@
 from rich.console import Console
+import random, os, sys, time
 import time
 import sys
 import os
@@ -9,6 +10,10 @@ TEXT_SPEED = 0.03
 
 # Referencia global para música de combate para poder detenerla inmediatamente al derrotar al jugador
 FIGHT_AUDIO_REF = {"src": None, "winsound": False}
+# Referencia global para música de aventura para poder detenerla al entrar a tiendas
+BG_AUDIO_REF = {"src": None, "winsound": False}
+# Referencia global a la instancia del juego para acceder a bg_audio_source
+JUEGO_REF = None
 # Referencias para audio de derrota (FAILBATTLE / LOSE)
 DEFEAT_AUDIO = {"sources": [], "winsound": False}
 
@@ -123,33 +128,23 @@ def seleccionar_velocidad(console):
 
 class Personaje:
     def __init__(self, nombre, clase=None, nivel=1):
-        """Crea un personaje con nombre, clase, nivel y calcula salud y daño según la clase.
-
-        Args:
-            nombre (str): nombre del personaje
-            clase (str|None): tipo de clase ('guerrero','mago','explorador'...)
-            nivel (int): nivel inicial
-        """
-        self.nombre = nombre
-        self.nivel = nivel
+        """Inicializa el personaje con estadísticas base, poder y economía."""
+        self.nombre = nombre or "Aventurero"
+        self.nivel = nivel or 1
         self.clase = (clase or "explorador").lower()
-        # atributo opcional usado por la historia
         self.tiene_piedra = False
 
-        # definir estadísticas base por clase
         stats = {
             'guerrero': {'salud': 120, 'danio': 15},
             'mago': {'salud': 70, 'danio': 22},
             'explorador': {'salud': 90, 'danio': 12},
             'ladron': {'salud': 85, 'danio': 14},
         }
-        # usar valores por defecto si la clase no existe
         base = stats.get(self.clase, {'salud': 80, 'danio': 10})
-        # ajustar salud según nivel (por ejemplo +10 por nivel)
         self.salud = base['salud'] + (self.nivel - 1) * 10
         self.danio = base['danio'] + int((self.nivel - 1) * 1)
-
         self.salud_max = self.salud
+
         self.poderes = {
             'guerrero': 'Golpe fuerte',
             'mago': 'Bola de fuego',
@@ -157,14 +152,18 @@ class Personaje:
             'ladron': 'Ataque sigiloso',
         }
         self.poder = self.poderes.get(self.clase, 'Ataque básico')
+        self.poder_usos = 2
+
+        # Economía
+        self.monedas = 10
+        self.amuleto_vigor = False
 
     def restaurar(self):
-        """Restaura el estado básico del personaje para reiniciar la aventura."""
         self.salud = self.salud_max
-        # Reiniciar usos del poder especial si existían
         self.poder_usos = 2
-        # Quitar progreso clave de la historia
         self.tiene_piedra = False
+        self.monedas = 10
+        self.amuleto_vigor = False
 
 class Enemigo:
     def __init__(self, nombre="Bestia sombría", salud=80, danio=12):
@@ -359,6 +358,13 @@ def combate_personalizado(etapa:int, proxima_escena="sendero_profundo"):
             play_effect(os.path.join(os.path.dirname(__file__), "Sound Effects", "WINBATTLE-1.wav"))
             # escalar progreso
             jugador.nivel_progreso = getattr(jugador,'nivel_progreso',0)+1
+            # Recompensa monetaria
+            recompensa = random.randint(0,10)
+            if recompensa>0:
+                jugador.monedas += recompensa
+                console.print(f"[yellow]Obtienes {recompensa} monedas. Total: {jugador.monedas}[/]")
+            else:
+                console.print("[dim]No encontraste monedas esta vez.[/]")
             return proxima_escena
         else:
             return handle_derrota(jugador)
@@ -498,8 +504,236 @@ def combate(jugador):
         console.print("\n[bold green]¡Has vencido a la bestia![/]")
         play_effect(os.path.join(os.path.dirname(__file__), "Sound Effects", "WINBATTLE-1.wav"))
         jugador.nivel_progreso = max(getattr(jugador, 'nivel_progreso', 0), 1)
-    return "sendero_profundo"
+        # Recompensa monetaria
+        recompensa = random.randint(0,10)
+        if recompensa>0:
+            jugador.monedas += recompensa
+            console.print(f"[yellow]Obtienes {recompensa} monedas. Total: {jugador.monedas}[/]")
+        else:
+            console.print("[dim]No encontraste monedas esta vez.[/]")
+        return "sendero_profundo"
     return handle_derrota(jugador)
+
+# ------------------- TIENDAS / ECONOMIA ------------------- #
+def tienda_factory(retorno:str):
+    """Crea una acción de escena que abre una tienda y retorna a `retorno`."""
+    def _tienda(j):
+        console = Console()
+        console.print("\n[bold cyan]Tienda del viajero[/]")
+        # Detener música de aventura temporalmente y reproducir música de tienda
+        store_path = os.path.join(os.path.dirname(__file__), "Music", "STORE-1.wav")
+        adventure_path = os.path.join(os.path.dirname(__file__), "Music", "ADVENTURE-1.wav")
+        store_src = None
+        used_winsound_store = False
+        # Detener explícitamente música de aventura si está sonando
+        try:
+            if BG_AUDIO_REF.get("src") is not None:
+                try:
+                    BG_AUDIO_REF["src"].stop()
+                except Exception:
+                    pass
+                BG_AUDIO_REF["src"] = None
+            # Intentar siempre detener winsound aunque la bandera no esté marcada (seguro idempotente)
+            if sys.platform.startswith("win"):
+                try:
+                    import winsound
+                    winsound.PlaySound(None, 0)
+                except Exception:
+                    pass
+            BG_AUDIO_REF["winsound"] = False
+            # Barrido adicional: si existe algún objeto global con atributo bg_audio_source, detenerlo
+            try:
+                for _name, _obj in globals().items():
+                    if hasattr(_obj, 'bg_audio_source'):
+                        src = getattr(_obj, 'bg_audio_source')
+                        try:
+                            if src is not None:
+                                src.stop()
+                        except Exception:
+                            pass
+                        try:
+                            setattr(_obj, 'bg_audio_source', None)
+                        except Exception:
+                            pass
+                    if hasattr(_obj, 'winsound_used') and getattr(_obj, 'winsound_used'):
+                        # limpiar bandera para que no se reanude automáticamente en lógica futura
+                        try:
+                            setattr(_obj, 'winsound_used', False)
+                        except Exception:
+                            pass
+                # Intento directo usando JUEGO_REF (más robusto)
+                try:
+                    if JUEGO_REF is not None and hasattr(JUEGO_REF, 'bg_audio_source'):
+                        src = getattr(JUEGO_REF, 'bg_audio_source')
+                        if src is not None:
+                            try: src.stop()
+                            except Exception: pass
+                            try: setattr(JUEGO_REF, 'bg_audio_source', None)
+                            except Exception: pass
+                        if hasattr(JUEGO_REF, 'winsound_used') and getattr(JUEGO_REF, 'winsound_used'):
+                            setattr(JUEGO_REF, 'winsound_used', False)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+        except Exception:
+            pass
+        # parar efectos cortos en curso
+        try:
+            if LAST_SFX.get("src") is not None:
+                try: LAST_SFX["src"].stop()
+                except Exception: pass
+                LAST_SFX["src"] = None
+            if LAST_SFX.get("winsound") and sys.platform.startswith("win"):
+                try:
+                    import winsound
+                    winsound.PlaySound(None, 0)
+                except Exception:
+                    pass
+            LAST_SFX["winsound"] = False
+        except Exception:
+            pass
+        # detener música aventura
+        try:
+            from openal import oalOpen
+            if 'juego' in globals():
+                pass
+        except Exception:
+            pass
+        try:
+            # si hay fuente openal guardada (referencia global posible vía bg_audio_source en Juego)
+            # No tenemos acceso directo a la instancia Juego aquí; se asume música de aventura se detiene antes de llamar acción de escena si es necesario.
+            # Intentar openal primero
+            from openal import oalOpen
+            if os.path.exists(store_path):
+                try:
+                    store_src = oalOpen(store_path)
+                    if store_src is not None:
+                        try:
+                            store_src.set_gain(0.25)
+                        except Exception:
+                            try: store_src.gain = 0.25
+                            except Exception: pass
+                        store_src.play()
+                except Exception:
+                    store_src = None
+        except Exception:
+            store_src = None
+        if store_src is None and sys.platform.startswith("win") and os.path.exists(store_path):
+            try:
+                import winsound
+                winsound.PlaySound(store_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+                used_winsound_store = True
+            except Exception:
+                pass
+        while True:
+            console.print(f"Monedas: [yellow]{j.monedas}[/] | Salud: [green]{j.salud}/{j.salud_max}[/] | Daño: [red]{j.danio}[/]")
+            console.print("Elige un artículo:")
+            console.print("1. Poción pequeña (+20 salud) - 5 monedas")
+            console.print("2. Poción grande (salud completa) - 9 monedas")
+            console.print("3. Afilar arma (+3 daño) - 8 monedas")
+            console.print("4. Amuleto de vigor (+10 salud máx, una vez) - 10 monedas")
+            console.print("5. Restaurar poderes especiales (2 usos) - 4 monedas")
+            console.print("6. Salir de la tienda")
+            elec = input("Opción (1-6): ").strip()
+            # Sonido de selección para cualquier opción ingresada (válida o salida)
+            try:
+                sel_path = os.path.join(os.path.dirname(__file__), "Sound Effects", "SELECT3-1.wav")
+                if os.path.exists(sel_path):
+                    play_effect(sel_path)
+            except Exception:
+                pass
+            if elec == '1':
+                if j.monedas >=5:
+                    j.monedas -=5
+                    j.salud = min(j.salud_max, j.salud+20)
+                    console.print(f"[green]Te curas. Salud: {j.salud}/{j.salud_max} (Monedas: {j.monedas})[/]")
+                else:
+                    console.print("[red]Monedas insuficientes.[/]")
+            elif elec == '2':
+                if j.monedas >=9:
+                    j.monedas -=9
+                    j.salud = j.salud_max
+                    console.print(f"[green]Salud restaurada completamente. (Monedas: {j.monedas})[/]")
+                else:
+                    console.print("[red]Monedas insuficientes.[/]")
+            elif elec == '3':
+                if j.monedas >=8:
+                    j.monedas -=8
+                    j.danio +=3
+                    console.print(f"[yellow]Tu daño aumenta a {j.danio}. (Monedas: {j.monedas})[/]")
+                else:
+                    console.print("[red]Monedas insuficientes.[/]")
+            elif elec == '4':
+                if j.amuleto_vigor:
+                    console.print("[dim]Ya posees el amuleto.[/]")
+                elif j.monedas >=10:
+                    j.monedas -=10
+                    j.salud_max +=10
+                    j.salud = min(j.salud_max, j.salud+10)
+                    j.amuleto_vigor = True
+                    console.print(f"[green]Amuleto adquirido. Salud máx: {j.salud_max}. (Monedas: {j.monedas})[/]")
+                else:
+                    console.print("[red]Monedas insuficientes.[/]")
+            elif elec == '5':
+                if j.monedas >=4:
+                    j.monedas -=4
+                    j.poder_usos = 2
+                    console.print(f"[magenta]Poderes restaurados (2 usos). (Monedas: {j.monedas})[/]")
+                else:
+                    console.print("[red]Monedas insuficientes.[/]")
+            elif elec == '6' or elec == '':
+                console.print("[dim]Abandonas la tienda.[/]")
+                # detener música tienda
+                try:
+                    if store_src is not None:
+                        try: store_src.stop()
+                        except Exception: pass
+                    if used_winsound_store and sys.platform.startswith("win"):
+                        try:
+                            import winsound
+                            winsound.PlaySound(None, 0)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+                # reanudar aventura
+                try:
+                    if os.path.exists(adventure_path):
+                        # intentar openal
+                        try:
+                            from openal import oalOpen
+                            adv_src = oalOpen(adventure_path)
+                            if adv_src is not None:
+                                try:
+                                    adv_src.set_gain(0.2)
+                                except Exception:
+                                    try: adv_src.gain = 0.2
+                                    except Exception: pass
+                                adv_src.play()
+                                try:
+                                    BG_AUDIO_REF["src"] = adv_src
+                                    BG_AUDIO_REF["winsound"] = False
+                                except Exception:
+                                    pass
+                        except Exception:
+                            if sys.platform.startswith("win"):
+                                try:
+                                    import winsound
+                                    winsound.PlaySound(adventure_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+                                    try:
+                                        BG_AUDIO_REF["src"] = None
+                                        BG_AUDIO_REF["winsound"] = True
+                                    except Exception:
+                                        pass
+                                except Exception:
+                                    pass
+                except Exception:
+                    pass
+                return retorno
+            else:
+                console.print("[red]Opción no válida.[/]")
+    return _tienda
 
 def main():
     console = Console()
@@ -521,10 +755,16 @@ def main():
     console.print(f"Salud: [green]{pj.salud}[/]")
     console.print(f"Daño: [yellow]{pj.danio}[/]")
     console.print(f"Habilidad especial: [bold]{pj.poder}[/]")
+    console.print(f"Monedas: [yellow]{pj.monedas}[/]")
 
     # crear escenas y lanzar el juego
     escenas = crear_escenas()
     juego = Juego(pj, escenas, "inicio")
+    try:
+        global JUEGO_REF
+        JUEGO_REF = juego
+    except Exception:
+        pass
 
     # iniciar música de aventura después de configurar el personaje
     try:
@@ -546,6 +786,11 @@ def main():
                 # guardar referencia para detener al final
                 juego.bg_audio_source = bg_src
                 juego.oal_quit = oalQuit
+                try:
+                    BG_AUDIO_REF["src"] = bg_src
+                    BG_AUDIO_REF["winsound"] = False
+                except Exception:
+                    pass
         else:
             console.print(f"[yellow]Archivo de música no encontrado: {bg_path}[/]")
     except Exception:
@@ -558,6 +803,11 @@ def main():
                     winsound.PlaySound(bg_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
                     juego.winsound_used = True
                     console.print("[dim]Reproduciendo música de aventura (winsound)...[/]")
+                    try:
+                        BG_AUDIO_REF["src"] = None
+                        BG_AUDIO_REF["winsound"] = True
+                    except Exception:
+                        pass
                 else:
                     console.print(f"[yellow]Archivo de música no encontrado: {bg_path}[/]")
         except Exception:
@@ -935,72 +1185,77 @@ class Juego:
                         except Exception:
                             pass
                         # reproducir música de pelea
-                        fight_path = os.path.join(os.path.dirname(__file__), "Music", "FIGHT-1.wav")
-                        if os.path.exists(fight_path):
-                            # preferir openal si el bg usa openal
-                            if self.bg_audio_source is not None:
+                        # detener cualquier música previa (aventura o pelea residual) para evitar solapamiento
+                        try:
+                            # detener música de pelea previa
+                            if self.fight_src is not None:
+                                try: self.fight_src.stop()
+                                except Exception: pass
+                                self.fight_src = None
+                            if getattr(self, 'fight_winsound', False) and sys.platform.startswith("win"):
                                 try:
-                                    from openal import oalOpen
-                                    f_src = oalOpen(fight_path)
-                                    if f_src is not None:
-                                        # Ajustar volumen de la música de pelea al 30%
-                                        try:
-                                            f_src.set_gain(0.3)
-                                        except Exception:
-                                            try:
-                                                f_src.gain = 0.3
-                                            except Exception:
-                                                pass
-                                        f_src.play()
-                                        self.fight_src = f_src
-                                        self.fight_winsound = False
-                                        try:
-                                            from __main__ import FIGHT_AUDIO_REF
-                                            FIGHT_AUDIO_REF["src"] = f_src
-                                            FIGHT_AUDIO_REF["winsound"] = False
-                                        except Exception:
-                                            pass
+                                    import winsound
+                                    winsound.PlaySound(None, 0)
                                 except Exception:
                                     pass
-                            else:
-                                # si bg era winsound, usar winsound para pelea
-                                if sys.platform.startswith("win") and self.winsound_used:
+                                self.fight_winsound = False
+                        except Exception:
+                            pass
+                        try:
+                            # detener música de aventura global si existe
+                            if 'BG_AUDIO_REF' in globals():
+                                if BG_AUDIO_REF.get("src") is not None:
+                                    try: BG_AUDIO_REF["src"].stop()
+                                    except Exception: pass
+                                    BG_AUDIO_REF["src"] = None
+                                if BG_AUDIO_REF.get("winsound") and sys.platform.startswith("win"):
                                     try:
                                         import winsound
-                                        winsound.PlaySound(fight_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
-                                        self.fight_src = None
-                                        self.fight_winsound = True
-                                        try:
-                                            from __main__ import FIGHT_AUDIO_REF
-                                            FIGHT_AUDIO_REF["src"] = None
-                                            FIGHT_AUDIO_REF["winsound"] = True
-                                        except Exception:
-                                            pass
+                                        winsound.PlaySound(None, 0)
                                     except Exception:
-                                        # intentar openal como fallback
-                                        try:
-                                            from openal import oalOpen
-                                            f_src = oalOpen(fight_path)
-                                            if f_src is not None:
-                                                # Ajustar volumen al 30% también en este fallback
-                                                try:
-                                                    f_src.set_gain(0.3)
-                                                except Exception:
-                                                    try:
-                                                        f_src.gain = 0.3
-                                                    except Exception:
-                                                        pass
-                                                f_src.play()
-                                                self.fight_src = f_src
-                                                self.fight_winsound = False
-                                                try:
-                                                    from __main__ import FIGHT_AUDIO_REF
-                                                    FIGHT_AUDIO_REF["src"] = f_src
-                                                    FIGHT_AUDIO_REF["winsound"] = False
-                                                except Exception:
-                                                    pass
-                                        except Exception:
-                                            pass
+                                        pass
+                                    BG_AUDIO_REF["winsound"] = False
+                        except Exception:
+                            pass
+                        fight_path = os.path.join(os.path.dirname(__file__), "Music", "FIGHT-1.wav")
+                        if os.path.exists(fight_path):
+                            played = False
+                            # Intentar siempre OpenAL primero
+                            try:
+                                from openal import oalOpen
+                                f_src = oalOpen(fight_path)
+                                if f_src is not None:
+                                    try:
+                                        f_src.set_gain(0.3)
+                                    except Exception:
+                                        try: f_src.gain = 0.3
+                                        except Exception: pass
+                                    f_src.play()
+                                    self.fight_src = f_src
+                                    self.fight_winsound = False
+                                    try:
+                                        FIGHT_AUDIO_REF["src"] = f_src
+                                        FIGHT_AUDIO_REF["winsound"] = False
+                                    except Exception:
+                                        pass
+                                    played = True
+                            except Exception:
+                                pass
+                            # Si OpenAL no funcionó usar winsound si está en Windows
+                            if not played and sys.platform.startswith("win"):
+                                try:
+                                    import winsound
+                                    winsound.PlaySound(fight_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+                                    self.fight_src = None
+                                    self.fight_winsound = True
+                                    try:
+                                        FIGHT_AUDIO_REF["src"] = None
+                                        FIGHT_AUDIO_REF["winsound"] = True
+                                    except Exception:
+                                        pass
+                                    played = True
+                                except Exception:
+                                    pass
                     except Exception:
                         pass
 
@@ -1069,15 +1324,46 @@ class Juego:
                     # Reanudar (o iniciar) música de aventura si estaba pausada por la pelea
                     try:
                         adv_path = os.path.join(os.path.dirname(__file__), "Music", "ADVENTURE-1.wav")
-                        if self.bg_audio_source is not None:
-                            # si existe fuente openal, reproducir
-                            self.bg_audio_source.play()
-                        else:
-                            # si previamente se usó winsound para bg
-                            if sys.platform.startswith("win"):
-                                if self.winsound_used and os.path.exists(adv_path):
-                                    import winsound
-                                    winsound.PlaySound(adv_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+                        if os.path.exists(adv_path):
+                            if self.bg_audio_source is not None:
+                                try:
+                                    self.bg_audio_source.play()
+                                except Exception:
+                                    pass
+                            else:
+                                # Intentar crear nueva fuente OpenAL primero
+                                started = False
+                                try:
+                                    from openal import oalOpen
+                                    src = oalOpen(adv_path)
+                                    if src is not None:
+                                        try:
+                                            src.set_gain(0.2)
+                                        except Exception:
+                                            try: src.gain = 0.2
+                                            except Exception: pass
+                                        src.play()
+                                        self.bg_audio_source = src
+                                        started = True
+                                        try:
+                                            BG_AUDIO_REF["src"] = src
+                                            BG_AUDIO_REF["winsound"] = False
+                                        except Exception:
+                                            pass
+                                except Exception:
+                                    pass
+                                if not started and sys.platform.startswith("win"):
+                                    try:
+                                        import winsound
+                                        winsound.PlaySound(adv_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+                                        self.winsound_used = True
+                                        try:
+                                            BG_AUDIO_REF["src"] = None
+                                            BG_AUDIO_REF["winsound"] = True
+                                        except Exception:
+                                            pass
+                                    except Exception:
+                                        pass
                     except Exception:
                         pass
                     # Reiniciar escena al inicio
@@ -1518,7 +1804,7 @@ def crear_escenas():
         "sendero_profundo": Escena(
             "Sendero profundo",
             "Tras la victoria, avanzas por un sendero que se estrecha. El bosque parece observarte.",
-            {"Seguir huellas profundas": "combate_lobo", "Seguir susurros lejanos": "claro_susurros", "Tomar un breve descanso": "descanso_breve"}
+            {"Seguir huellas profundas": "combate_lobo", "Seguir susurros lejanos": "claro_susurros", "Tomar un breve descanso": "descanso_breve", "Visitar la tienda": "tienda_bosque"}
         ),
         "claro_susurros": Escena(
             "Claro de susurros",
@@ -1535,7 +1821,7 @@ def crear_escenas():
         "bosque_bruma": Escena(
             "Bosque de bruma",
             "Una bruma fría serpentea entre los árboles, distorsionando formas.",
-            {"Avanzar hacia la bruma densa": "combate_espectro", "Rodear buscando claridad": "trampa_bruma", "Buscar una luz titilante": "luz_bruma"}
+            {"Avanzar hacia la bruma densa": "combate_espectro", "Rodear buscando claridad": "trampa_bruma", "Buscar una luz titilante": "luz_bruma", "Visitar la tienda": "tienda_bruma"}
         ),
         "trampa_bruma": Escena(
             "Trampa en la bruma",
@@ -1552,7 +1838,7 @@ def crear_escenas():
         "claro_corrupto": Escena(
             "Claro corrupto",
             "El suelo palpita con energía oscura alrededor de un corazón de corrupción.",
-            {"Enfrentar el corazón": "combate_guardiana", "Intentar purificar el aire": "purificacion_fallida", "Retirarse momentáneamente": "reagrupacion"}
+            {"Enfrentar el corazón": "combate_guardiana", "Intentar purificar el aire": "purificacion_fallida", "Retirarse momentáneamente": "reagrupacion", "Visitar la tienda": "tienda_corrupta"}
         ),
         "purificacion_fallida": Escena(
             "Purificación fallida",
@@ -1571,6 +1857,26 @@ def crear_escenas():
             "Con la guardiana derrotada, sientes caminos que se abren hacia un destino mayor.",
             {},
             accion=lambda j: ("montaña" if getattr(j,'tiene_piedra', False) else "cueva")
+        ),
+
+        # Tiendas
+        "tienda_bosque": Escena(
+            "Tienda del Bosque",
+            "Un viajero ofrece objetos útiles entre raíces retorcidas.",
+            {},
+            accion=tienda_factory("sendero_profundo")
+        ),
+        "tienda_bruma": Escena(
+            "Tienda de la Bruma",
+            "Una figura encapuchada vende reliquias envueltas en vapor frío.",
+            {},
+            accion=tienda_factory("bosque_bruma")
+        ),
+        "tienda_corrupta": Escena(
+            "Tienda Corrupta",
+            "Una mesa erosionada por la corrupción ofrece poder a cambio de monedas.",
+            {},
+            accion=tienda_factory("claro_corrupto")
         ),
 
         "montaña": Escena(
