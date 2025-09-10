@@ -379,7 +379,6 @@ def main():
                     except Exception:
                         pass
                 bg_src.play()
-                console.print("[dim]Reproduciendo música de aventura...[/]")
                 # guardar referencia para detener al final
                 juego.bg_audio_source = bg_src
                 juego.oal_quit = oalQuit
@@ -927,6 +926,25 @@ class Juego:
             except Exception:
                 pass
 
+            # Sonido mítico / guardián (ANGEL-1.wav) al interactuar con lugares sagrados
+            try:
+                angel_path = os.path.join(os.path.dirname(__file__), "Sound Effects", "ANGEL-1.wav")
+                will_play = False
+                # Colocar la piedra en la montaña
+                if self.escena_actual == "montaña" and "colocar" in opcion_elegida_texto.lower():
+                    will_play = True
+                # Hablar / decidir frente a la guardiana (al escoger en la cueva). Solo una vez.
+                if self.escena_actual == "cueva" and opcion_elegida_texto and not hasattr(self, "_guardian_angel_played"):
+                    will_play = True
+                    self._guardian_angel_played = True
+                if will_play and os.path.exists(angel_path):
+                    play_effect(angel_path)
+                    self._last_angel_time = time.time()
+                    # Delay para que no sea cortado por impresión / siguiente transición
+                    time.sleep(5)
+            except Exception:
+                pass
+
             # Si estamos en la escena del río y se eligió "Cruzar el río", reproducir CROSSRIVER-1.wav
             try:
                 if self.escena_actual == "rio":
@@ -992,11 +1010,28 @@ class Juego:
 
             # Reproducir sonido de selección al elegir una opción válida
             try:
-                # Evitar solapar con CROSSRIVER si acaba de sonar hace < 0.4s
-                recent_cross = hasattr(self, "_last_crossriver_time") and (time.time() - getattr(self, "_last_crossriver_time")) < 0.4
-                if not recent_cross and not chest_open_played:
-                    sfx_path = os.path.join(os.path.dirname(__file__), "Sound Effects", "SELECT3-1.wav")
-                    if os.path.exists(sfx_path):
+                sfx_path = os.path.join(os.path.dirname(__file__), "Sound Effects", "SELECT3-1.wav")
+                if os.path.exists(sfx_path):
+                    played = False
+                    # Intentar OpenAL sin detener otros efectos para permitir que se oiga junto a ellos
+                    try:
+                        from openal import oalOpen
+                        sel_src = oalOpen(sfx_path)
+                        if sel_src is not None:
+                            # volumen moderado para no tapar efectos prioritarios
+                            try:
+                                sel_src.set_gain(0.8)
+                            except Exception:
+                                try:
+                                    sel_src.gain = 0.8
+                                except Exception:
+                                    pass
+                            sel_src.play()
+                            played = True
+                    except Exception:
+                        pass
+                    if not played:
+                        # Fallback: usar play_effect (puede cortar un efecto anterior si no hay openal)
                         play_effect(sfx_path)
             except Exception:
                 pass
@@ -1006,8 +1041,10 @@ class Juego:
                 if not siguiente.startswith("final"):
                     # No reproducir pasos si CROSSRIVER acaba de sonar (ventana 0.5s)
                     recent_cross = hasattr(self, "_last_crossriver_time") and (time.time() - getattr(self, "_last_crossriver_time")) < 0.5
+                    # No reproducir pasos si ANGEL acaba de sonar (ventana 0.5s)
+                    recent_angel = hasattr(self, "_last_angel_time") and (time.time() - getattr(self, "_last_angel_time")) < 0.5
                     cruzando = (self.escena_actual == "rio" and "cruzar" in opcion_elegida_texto.lower())
-                    if not cruzando and not recent_cross and not chest_open_played:
+                    if not cruzando and not recent_cross and not chest_open_played and not recent_angel:
                         base_dir = os.path.dirname(__file__)
                         step_path = os.path.join(base_dir, "Sound Effects", "FORESTWALK-1.wav") if siguiente in TERRAIN_FOREST else os.path.join(base_dir, "Sound Effects", "SOLIDWALK-1.wav")
                         if os.path.exists(step_path):
