@@ -172,6 +172,31 @@ def combate(jugador):
         _play_sfx(os.path.join(os.path.dirname(__file__), "Sound Effects", "WINBATTLE-1.wav"))
     else:
         console.print("\n[bold red]La bestia te ha derrotado...[/]")
+        # Reproducir sonidos de derrota simultáneamente (preferir openal)
+        base_dir = os.path.dirname(__file__)
+        fail_path = os.path.join(base_dir, "Music", "FAILBATTLE-1.wav")
+        lose_path = os.path.join(base_dir, "Sound Effects", "LOSE-1.wav")
+        played_openal = False
+        try:
+            from openal import oalOpen
+            fuentes = []
+            for p in (fail_path, lose_path):
+                if os.path.exists(p):
+                    try:
+                        s = oalOpen(p)
+                        if s is not None:
+                            s.play()
+                            fuentes.append(s)
+                    except Exception:
+                        pass
+            if fuentes:
+                played_openal = True
+        except Exception:
+            pass
+        if not played_openal:
+            # Fallback: reproducir en secuencia (winsound u otro) si no se pudo con openal
+            _play_sfx(fail_path)
+            _play_sfx(lose_path)
     if jugador.salud <= 0:
         return "final_oscuro"
     return "post_pelea"
@@ -545,25 +570,28 @@ class Juego:
                             pass
                         self.fight_src = None
                         # si la pelea usó winsound, reanudar aventura con winsound
-                        if self.fight_winsound and sys.platform.startswith("win"):
-                            try:
-                                import winsound
-                                adv_path = os.path.join(os.path.dirname(__file__), "Music", "ADVENTURE-1.wav")
-                                if os.path.exists(adv_path):
-                                    winsound.PlaySound(adv_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
-                                    # aseguramos la bandera de bg winsound
-                                    self.winsound_used = True
-                                else:
-                                    winsound.PlaySound(None, 0)
-                            except Exception:
-                                pass
+                        # Solo reanudar música de aventura si NO se perdió (resultado != final_oscuro)
+                        if resultado != "final_oscuro":
+                            if self.fight_winsound and sys.platform.startswith("win"):
+                                try:
+                                    import winsound
+                                    adv_path = os.path.join(os.path.dirname(__file__), "Music", "ADVENTURE-1.wav")
+                                    if os.path.exists(adv_path):
+                                        winsound.PlaySound(adv_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+                                        # aseguramos la bandera de bg winsound
+                                        self.winsound_used = True
+                                    else:
+                                        winsound.PlaySound(None, 0)
+                                except Exception:
+                                    pass
+                            # si el bg era openal, reanudarlo solo si no es derrota
+                            if self.bg_audio_source is not None:
+                                try:
+                                    self.bg_audio_source.play()
+                                except Exception:
+                                    pass
                         self.fight_winsound = False
-                        # si el bg era openal, reanudarlo
-                        if self.bg_audio_source is not None:
-                            try:
-                                self.bg_audio_source.play()
-                            except Exception:
-                                pass
+                        # En caso de derrota, dejamos la música de aventura detenida.
                     except Exception:
                         pass
 
