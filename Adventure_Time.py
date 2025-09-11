@@ -134,6 +134,9 @@ class Personaje:
         self.nivel = nivel or 1
         self.clase = (clase or "explorador").lower()
         self.tiene_piedra = False
+        # Contadores para nuevas reglas
+        self.decisiones_desde_ultimo_combate = 0  # Debe alcanzar >=3 para permitir otro combate
+        self.combates_ganados = 0
 
         stats = {
             'guerrero': {'salud': 120, 'danio': 15},
@@ -169,6 +172,37 @@ class Personaje:
         self.monedas = 10
         self.amuleto_vigor = False
         self.descansos = 0
+        self.decisiones_desde_ultimo_combate = 0
+        self.combates_ganados = 0
+
+# ------------------- Cofres ------------------- #
+def abrir_cofre(jugador, console):
+    """Otorga el contenido de un cofre: monedas (5-10) o curación (10-20).
+    Si el jugador está al máximo y sale curación, recibe 1 moneda en su lugar."""
+    if jugador is None:
+        return
+    tipo = random.choice(["monedas", "curacion"])
+    if tipo == "monedas":
+        cantidad = random.randint(5, 10)
+        jugador.monedas += cantidad
+        console.print(f"[yellow]Encuentras un cofre y obtienes {cantidad} monedas. Total: {jugador.monedas}[/]")
+    else:
+        if jugador.salud >= jugador.salud_max:
+            jugador.monedas += 1
+            console.print("[dim]El cofre emanaba energía curativa pero estabas al máximo. Obtienes 1 moneda.[/]")
+        else:
+            curar = random.randint(10, 20)
+            antes = jugador.salud
+            jugador.salud = min(jugador.salud_max, jugador.salud + curar)
+            console.print(f"[green]La luz del cofre te cura. Salud {antes} -> {jugador.salud} (+{jugador.salud-antes}).[/]")
+
+def posible_cofre_aleatorio(juego):
+    """15% de probabilidad de disparar un cofre aleatorio en exploración."""
+    try:
+        if random.random() < 0.15:
+            abrir_cofre(juego.jugador, juego.console)
+    except Exception:
+        pass
 
 class Enemigo:
     def __init__(self, nombre="Bestia sombría", salud=80, danio=12):
@@ -325,9 +359,24 @@ def combate_personalizado(etapa:int, proxima_escena="sendero_profundo"):
                 play_effect(os.path.join(os.path.dirname(__file__), "Player Effects", "SHIELD-1.wav"))
                 console.print("Te preparas para reducir el daño entrante.")
             elif accion == "4":
-                curar = min(15, jugador.salud_max - jugador.salud)
-                jugador.salud += curar
-                console.print(f"Recuperas [green]{curar}[/] de salud.")
+                # Curación con riesgo: cura base 15, pero puede recibir daño
+                deficit = jugador.salud_max - jugador.salud
+                if deficit <= 0:
+                    console.print("[dim]Ya estás al máximo.[/]")
+                else:
+                    curar = min(15, deficit)
+                    jugador.salud += curar
+                    roll = random.random()
+                    if roll < 0.05:  # muy baja probabilidad daño grande
+                        dano = random.randint(16, 18)
+                        jugador.salud = max(1, jugador.salud - dano)
+                        console.print(f"[red]Sufres una interrupción grave (-{dano}). Salud final: {jugador.salud}[/]")
+                    elif roll < 0.25:  # baja probabilidad daño leve
+                        dano = random.randint(1, 10)
+                        jugador.salud = max(1, jugador.salud - dano)
+                        console.print(f"[yellow]Te hieres durante la curación (-{dano}). Salud final: {jugador.salud}[/]")
+                    else:
+                        console.print(f"Recuperas [green]{curar}[/] de salud sin contratiempos.")
             else:
                 console.print("[red]Acción no válida[/]")
                 continue
@@ -363,10 +412,12 @@ def combate_personalizado(etapa:int, proxima_escena="sendero_profundo"):
             play_effect(os.path.join(os.path.dirname(__file__), "Sound Effects", "WINBATTLE-1.wav"))
             # escalar progreso
             jugador.nivel_progreso = getattr(jugador,'nivel_progreso',0)+1
-            # Recompensa monetaria
-            recompensa = random.randint(2,10)
+            # Recompensa monetaria (nueva regla 5-15)
+            recompensa = random.randint(5,15)
             jugador.monedas += recompensa
             console.print(f"[yellow]Obtienes {recompensa} monedas. Total: {jugador.monedas}[/]")
+            jugador.combates_ganados += 1
+            jugador.decisiones_desde_ultimo_combate = 0
             return proxima_escena
         else:
             return handle_derrota(jugador)
@@ -481,9 +532,24 @@ def combate(jugador):
             console.print("Te preparas para defenderte. El daño recibido se reduce a la mitad este turno.")
             defensa = True
         elif accion == "4":
-            curar = min(15, jugador.salud_max - jugador.salud)
-            jugador.salud += curar
-            console.print(f"Te curas [green]{curar}[/] puntos de salud.")
+            # Curación con riesgo
+            deficit = jugador.salud_max - jugador.salud
+            if deficit <= 0:
+                console.print("[dim]Tu salud ya está completa.[/]")
+            else:
+                curar = min(15, deficit)
+                jugador.salud += curar
+                roll = random.random()
+                if roll < 0.05:
+                    dano = random.randint(16, 18)
+                    jugador.salud = max(1, jugador.salud - dano)
+                    console.print(f"[red]Algo sale mal (-{dano}). Salud final: {jugador.salud}[/]")
+                elif roll < 0.25:
+                    dano = random.randint(1, 10)
+                    jugador.salud = max(1, jugador.salud - dano)
+                    console.print(f"[yellow]Pierdes algo de vida durante la curación (-{dano}). Salud final: {jugador.salud}[/]")
+                else:
+                    console.print(f"Te curas [green]{curar}[/] puntos de salud sin problemas.")
         else:
             console.print("[red]Acción no válida.[/]")
             continue
@@ -506,10 +572,12 @@ def combate(jugador):
         console.print("\n[bold green]¡Has vencido a la bestia![/]")
         play_effect(os.path.join(os.path.dirname(__file__), "Sound Effects", "WINBATTLE-1.wav"))
         jugador.nivel_progreso = max(getattr(jugador, 'nivel_progreso', 0), 1)
-        # Recompensa monetaria
-        recompensa = random.randint(2,10)
+        # Recompensa monetaria (5-15)
+        recompensa = random.randint(5,15)
         jugador.monedas += recompensa
         console.print(f"[yellow]Obtienes {recompensa} monedas. Total: {jugador.monedas}[/]")
+        jugador.combates_ganados += 1
+        jugador.decisiones_desde_ultimo_combate = 0
         return "sendero_profundo"
     return handle_derrota(jugador)
 
@@ -1132,11 +1200,11 @@ class Juego:
                     self.escena_actual not in {"combate","combate_lobo","combate_espectro","combate_guardiana"} and
                     not self.escena_actual.startswith("tienda") and
                     getattr(self.jugador, 'descansos', 0) < 3):
-                    if "Descansar (+8 salud)" not in escena.opciones:
+                    if "Descansar (+10 salud)" not in escena.opciones:
                         escena.opciones = dict(escena.opciones)
-                        escena.opciones["Descansar (+8 salud)"] = REST_SENTINEL
-                elif getattr(self.jugador, 'descansos', 0) >= 3 and "Descansar (+8 salud)" in escena.opciones:
-                    escena.opciones = {k:v for k,v in escena.opciones.items() if k != "Descansar (+8 salud)"}
+                        escena.opciones["Descansar (+10 salud)"] = REST_SENTINEL
+                elif getattr(self.jugador, 'descansos', 0) >= 3 and "Descansar (+10 salud)" in escena.opciones:
+                    escena.opciones = {k:v for k,v in escena.opciones.items() if k != "Descansar (+10 salud)"}
             except Exception:
                 pass
 
@@ -1453,15 +1521,18 @@ class Juego:
             destino_tmp = escena.elegir(eleccion)
             if destino_tmp == REST_SENTINEL:
                 try:
-                    if getattr(self.jugador,'descansos',0) < 3:
-                        antes = self.jugador.salud
-                        self.jugador.salud = min(self.jugador.salud_max, self.jugador.salud + 8)
-                        self.jugador.descansos += 1
-                        self.console.print(f"[green]Descansas ({self.jugador.descansos}/3). Salud {antes} -> {self.jugador.salud}[/]")
-                        if self.jugador.descansos >= 3 and "Descansar (+8 salud)" in escena.opciones:
-                            escena.opciones = {k:v for k,v in escena.opciones.items() if k != "Descansar (+8 salud)"}
-                    else:
+                    if getattr(self.jugador,'descansos',0) >= 3:
                         self.console.print("[yellow]Ya no puedes descansar más (3/3).[/]")
+                    else:
+                        if self.jugador.salud >= self.jugador.salud_max:
+                            self.console.print("[dim]Tu salud ya está completa. No consumes un descanso.[/]")
+                        else:
+                            antes = self.jugador.salud
+                            self.jugador.salud = min(self.jugador.salud_max, self.jugador.salud + 10)
+                            self.jugador.descansos += 1
+                            self.console.print(f"[green]Descansas ({self.jugador.descansos}/3). Salud {antes} -> {self.jugador.salud} (+{self.jugador.salud-antes})[/]")
+                            if self.jugador.descansos >= 3 and "Descansar (+10 salud)" in escena.opciones:
+                                escena.opciones = {k:v for k,v in escena.opciones.items() if k != "Descansar (+10 salud)"}
                 except Exception:
                     pass
                 continue
@@ -1470,6 +1541,33 @@ class Juego:
             if not siguiente:
                 self.console.print("[red]Opción no válida[/]")
                 continue
+
+            # Gating de combate: requerir 3 decisiones previas
+            try:
+                contador = getattr(self.jugador, 'decisiones_desde_ultimo_combate', 0)
+                if str(siguiente).startswith("combate") and contador < 3:
+                    self.console.print("[yellow]Aún no estás listo para otro combate. Exploras un poco más...[/]")
+                    mapping = {
+                        'combate': 'encrucijada',
+                        'combate_lobo': 'sendero_profundo',
+                        'combate_espectro': 'bosque_bruma',
+                        'combate_guardiana': 'claro_corrupto'
+                    }
+                    siguiente = mapping.get(siguiente, 'encrucijada')
+                    contador += 1  # cuenta como decisión
+                    setattr(self.jugador, 'decisiones_desde_ultimo_combate', contador)
+                elif (not str(siguiente).startswith("combate")) and (not str(siguiente).startswith("final")):
+                    contador += 1
+                    setattr(self.jugador, 'decisiones_desde_ultimo_combate', contador)
+            except Exception:
+                pass
+
+            # Posible cofre aleatorio en exploración
+            try:
+                if not str(siguiente).startswith("combate") and not str(siguiente).startswith("final") and siguiente != 'cofre':
+                    posible_cofre_aleatorio(self)
+            except Exception:
+                pass
 
             # Determinar texto exacto de la opción elegida para detectar acciones especiales (como cruzar el río)
             try:
@@ -1778,24 +1876,27 @@ def descanso_breve_accion(j):
     """
     from rich.console import Console
     c = Console()
-    if getattr(j, 'descansos', 0) < 3:
-        j.descansos += 1
-        antes = j.salud
-        j.salud = min(j.salud_max, j.salud + 8)
-        c.print(f"[green]Descansas ({j.descansos}/3). Salud {antes} -> {j.salud}[/]")
-    else:
+    if getattr(j, 'descansos', 0) >= 3:
         c.print("[yellow]Ya has usado todos tus descansos (3). No recuperas más salud.[/]")
+        return "sendero_profundo"
+    if j.salud >= j.salud_max:
+        c.print("[dim]Tu salud ya está completa. No consumes un descanso.[/]")
+        return "sendero_profundo"
+    j.descansos += 1
+    antes = j.salud
+    j.salud = min(j.salud_max, j.salud + 10)
+    c.print(f"[green]Descansas ({j.descansos}/3). Salud {antes} -> {j.salud} (+{j.salud-antes})[/]")
     return "sendero_profundo"
 
 def sendero_profundo_accion(j):
     """Acción previa de la escena 'sendero_profundo' que oculta la opción de descanso tras 3 usos."""
     try:
         if getattr(j, 'descansos', 0) >= 3 and JUEGO_REF is not None:
-            sc = JUEGO_REF.escenas.get("sendero_profundo")
-            if sc and "Tomar un breve descanso" in sc.opciones:
-                # Crear nuevo dict sin la opción de descanso
-                nuevas = {k:v for k,v in sc.opciones.items() if k != "Tomar un breve descanso"}
-                sc.opciones = nuevas
+                sc = JUEGO_REF.escenas.get("sendero_profundo")
+                if sc and "Tomar un breve descanso" in sc.opciones:
+                    # Crear nuevo dict sin la opción de descanso
+                    nuevas = {k:v for k,v in sc.opciones.items() if k != "Tomar un breve descanso"}
+                    sc.opciones = nuevas
     except Exception:
         pass
     return None
@@ -1933,7 +2034,7 @@ def crear_escenas():
         ),
         "descanso_breve": Escena(
             "Descanso breve",
-            "Encuentras un tronco donde recuperas el aliento (+8 salud). (Máx 3 descansos)",
+            "Encuentras un tronco donde recuperas el aliento (+10 salud). (Máx 3 descansos)",
             {},
             accion=descanso_breve_accion
         ),
