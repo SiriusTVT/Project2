@@ -325,6 +325,9 @@ def combate_personalizado(etapa:int, proxima_escena="sendero_profundo"):
         if not hasattr(jugador, "poder_usos"):
             jugador.poder_usos = 2
         defensa = False
+        heals_used = 0
+        defense_used = 0
+        skip_enemy_attack = False
         turno_cont = 0
         while jugador.salud > 0 and enemigo.salud > 0:
             turno_cont += 1
@@ -333,8 +336,8 @@ def combate_personalizado(etapa:int, proxima_escena="sendero_profundo"):
             console.print("\nElige tu acción:")
             console.print("1. Atacar")
             console.print(f"2. Poder especial ({jugador.poder}) [{getattr(jugador,'poder_usos',0)} usos]")
-            console.print("3. Defender")
-            console.print("4. Curarse (+15)")
+            console.print(f"3. Defender (contraataque 5 daño) [{2-defense_used} usos]")
+            console.print(f"4. Curarse (+15) [{3-heals_used} usos]")
             accion = input("Acción (1-4): ").strip()
             if accion == "1":
                 play_effect(os.path.join(os.path.dirname(__file__), "Player Effects", "SWORD-1.wav"))
@@ -355,41 +358,43 @@ def combate_personalizado(etapa:int, proxima_escena="sendero_profundo"):
                     console.print("[dim]No te quedan usos del poder.[/]")
                     continue
             elif accion == "3":
+                if defense_used >= 2:
+                    console.print("[yellow]Ya no puedes defender más en este combate.[/]")
+                    continue
+                defense_used += 1
                 defensa = True
+                skip_enemy_attack = True  # niega el ataque enemigo
                 play_effect(os.path.join(os.path.dirname(__file__), "Player Effects", "SHIELD-1.wav"))
-                console.print("Te preparas para reducir el daño entrante.")
+                enemigo.salud -= 5
+                console.print("[green]Bloqueas todo el daño y contraatacas por [yellow]5[/].")
             elif accion == "4":
-                # Curación con riesgo: cura base 15, pero puede recibir daño
+                if heals_used >= 3:
+                    console.print("[yellow]No puedes curarte más en este combate.[/]")
+                    continue
                 deficit = jugador.salud_max - jugador.salud
                 if deficit <= 0:
                     console.print("[dim]Ya estás al máximo.[/]")
-                else:
-                    curar = min(15, deficit)
-                    jugador.salud += curar
-                    roll = random.random()
-                    if roll < 0.05:  # muy baja probabilidad daño grande
-                        dano = random.randint(16, 18)
-                        jugador.salud = max(1, jugador.salud - dano)
-                        console.print(f"[red]Sufres una interrupción grave (-{dano}). Salud final: {jugador.salud}[/]")
-                    elif roll < 0.25:  # baja probabilidad daño leve
-                        dano = random.randint(1, 10)
-                        jugador.salud = max(1, jugador.salud - dano)
-                        console.print(f"[yellow]Te hieres durante la curación (-{dano}). Salud final: {jugador.salud}[/]")
-                    else:
-                        console.print(f"Recuperas [green]{curar}[/] de salud sin contratiempos.")
+                    continue
+                curar = min(15, deficit)
+                jugador.salud += curar
+                heals_used += 1
+                # Ataque oportunista del enemigo (1-10) y se salta ataque normal este turno
+                dano_rebote = random.randint(1,10)
+                jugador.salud = max(1, jugador.salud - dano_rebote)
+                skip_enemy_attack = True
+                console.print(f"[green]Te curas {curar}. [/][red]El enemigo aprovecha y te hiere (-{dano_rebote}). Salud actual: {jugador.salud}[/]")
             else:
                 console.print("[red]Acción no válida[/]")
                 continue
             # turno enemigo
-            if enemigo.salud > 0:
-                import random
+            if enemigo.salud > 0 and not skip_enemy_attack:
                 base = enemigo.danio
                 tipo = random.choice(["normal","fuerte"]) if etapa>1 else "normal"
                 if tipo == "fuerte":
                     base += 5
                 if defensa:
-                    base//=2
-                    defensa=False
+                    base = 0
+                    defensa = False
                 # habilidades
                 if hasattr(enemigo,'habilidades'):
                     hab = enemigo.habilidades
@@ -404,8 +409,12 @@ def combate_personalizado(etapa:int, proxima_escena="sendero_profundo"):
                     if 'stun' in hab and random.random() < hab['stun']:
                         console.print("[bold red]La guardiana te aturde: pierdes el próximo 10% de daño.")
                         jugador.danio = max(1, int(jugador.danio*0.9))
-                jugador.salud -= base
-                console.print(f"Recibes [red]{base}[/] de daño.")
+                if base>0:
+                    jugador.salud -= base
+                    console.print(f"Recibes [red]{base}[/] de daño.")
+                else:
+                    console.print("[green]Bloqueas todo el ataque enemigo.[/]")
+            skip_enemy_attack = False
             time.sleep(0.4)
         if jugador.salud>0:
             console.print(f"\n[bold green]¡Has derrotado a {enemigo.nombre}![/]")
@@ -502,6 +511,9 @@ def combate(jugador):
     enemigo = Enemigo()
     console.print("\n[bold red]¡Una bestia sombría aparece![/]")
     defensa = False
+    heals_used = 0
+    defense_used = 0
+    skip_enemy_attack = False
     if not hasattr(jugador, "poder_usos"):
         jugador.poder_usos = 2
     while jugador.salud > 0 and enemigo.salud > 0:
@@ -510,8 +522,8 @@ def combate(jugador):
         console.print("\nElige tu acción:")
         console.print("1. Atacar")
         console.print(f"2. Usar poder especial ({jugador.poder}) [{jugador.poder_usos} usos restantes]")
-        console.print("3. Defender")
-        console.print("4. Curarse (+15 salud)")
+        console.print(f"3. Defender (contraataque 5 daño) [{2-defense_used} usos]")
+        console.print(f"4. Curarse (+15 salud) [{3-heals_used} usos]")
         accion = input("Acción (1-4): ").strip()
         if accion == "1":
             play_effect(os.path.join(os.path.dirname(__file__), "Player Effects", "SWORD-1.wav"))
@@ -528,33 +540,34 @@ def combate(jugador):
             else:
                 console.print("[dim]Ya no puedes usar tu poder especial.[/]")
         elif accion == "3":
-            play_effect(os.path.join(os.path.dirname(__file__), "Player Effects", "SHIELD-1.wav"))
-            console.print("Te preparas para defenderte. El daño recibido se reduce a la mitad este turno.")
+            if defense_used >= 2:
+                console.print("[yellow]Ya no puedes defender más en este combate.[/]")
+                continue
+            defense_used += 1
             defensa = True
+            skip_enemy_attack = True
+            play_effect(os.path.join(os.path.dirname(__file__), "Player Effects", "SHIELD-1.wav"))
+            enemigo.salud -= 5
+            console.print("[green]Bloqueas todo y contraatacas infligiendo 5 de daño![/]")
         elif accion == "4":
-            # Curación con riesgo
+            if heals_used >= 3:
+                console.print("[yellow]No puedes curarte más en este combate.[/]")
+                continue
             deficit = jugador.salud_max - jugador.salud
             if deficit <= 0:
                 console.print("[dim]Tu salud ya está completa.[/]")
-            else:
-                curar = min(15, deficit)
-                jugador.salud += curar
-                roll = random.random()
-                if roll < 0.05:
-                    dano = random.randint(16, 18)
-                    jugador.salud = max(1, jugador.salud - dano)
-                    console.print(f"[red]Algo sale mal (-{dano}). Salud final: {jugador.salud}[/]")
-                elif roll < 0.25:
-                    dano = random.randint(1, 10)
-                    jugador.salud = max(1, jugador.salud - dano)
-                    console.print(f"[yellow]Pierdes algo de vida durante la curación (-{dano}). Salud final: {jugador.salud}[/]")
-                else:
-                    console.print(f"Te curas [green]{curar}[/] puntos de salud sin problemas.")
+                continue
+            curar = min(15, deficit)
+            jugador.salud += curar
+            heals_used += 1
+            dano_rebote = random.randint(1,10)
+            jugador.salud = max(1, jugador.salud - dano_rebote)
+            skip_enemy_attack = True
+            console.print(f"[green]Te curas {curar}. [/][red]El enemigo reacciona y te hiere (-{dano_rebote}). Salud: {jugador.salud}[/]")
         else:
             console.print("[red]Acción no válida.[/]")
             continue
-        if enemigo.salud > 0:
-            import random
+        if enemigo.salud > 0 and not skip_enemy_attack:
             ataque = random.choice(["normal", "fuerte"])
             if ataque == "normal":
                 danio_enemigo = enemigo.danio
@@ -563,10 +576,13 @@ def combate(jugador):
                 danio_enemigo = enemigo.danio + 5
                 mensaje = "La bestia lanza un ataque feroz!"
             if defensa:
-                danio_enemigo //= 2
+                danio_enemigo = 0
                 defensa = False
-            jugador.salud -= danio_enemigo
-            console.print(f"{mensaje} Recibes [red]{danio_enemigo}[/] de daño.")
+                console.print("[green]Bloqueas el ataque completamente![/]")
+            if danio_enemigo>0:
+                jugador.salud -= danio_enemigo
+                console.print(f"{mensaje} Recibes [red]{danio_enemigo}[/] de daño.")
+        skip_enemy_attack = False
         time.sleep(0.5)
     if jugador.salud > 0:
         console.print("\n[bold green]¡Has vencido a la bestia![/]")
@@ -578,7 +594,7 @@ def combate(jugador):
         console.print(f"[yellow]Obtienes {recompensa} monedas. Total: {jugador.monedas}[/]")
         jugador.combates_ganados += 1
         jugador.decisiones_desde_ultimo_combate = 0
-        return "sendero_profundo"
+    return "respiro_bosque"
     return handle_derrota(jugador)
 
 # ------------------- TIENDAS / ECONOMIA ------------------- #
@@ -1192,7 +1208,60 @@ class Juego:
         self.console.print("[bold magenta]¡Bienvenido a Adventure Time versión texto![/]")
 
         while True:
-            escena = self.escenas[self.escena_actual]
+            # Fallback ante escenas faltantes (por ejemplo cofres buenos/malos)
+            try:
+                escena = self.escenas[self.escena_actual]
+            except KeyError:
+                # Crear de emergencia escenas de cofre si faltan
+                def _fallback_good(next_scene):
+                    def _a(j):
+                        c = self.console
+                        if j.salud < j.salud_max and random.choice([True, False]):
+                            heal = random.randint(10,15)
+                            antes = j.salud
+                            j.salud = min(j.salud_max, j.salud + heal)
+                            c.print(f"[green]Energía benevolente: {antes}->{j.salud} (+{j.salud-antes}).[/]")
+                        else:
+                            if j.salud >= j.salud_max:
+                                j.monedas += 1
+                                c.print("[dim]No necesitas curación. Obtienes 1 moneda.[/]")
+                            gain = random.randint(2,5)
+                            j.monedas += gain
+                            c.print(f"[yellow]Ganas {gain} monedas. Total: {j.monedas}[/]")
+                        return next_scene
+                    return _a
+                def _fallback_bad(next_scene):
+                    def _a(j):
+                        c = self.console
+                        if random.choice([True, False]):
+                            loss = min(j.monedas, random.randint(1,3))
+                            j.monedas -= loss
+                            c.print(f"[red]Pierdes {loss} monedas. Total: {j.monedas}[/]")
+                        else:
+                            dmg = random.randint(5,10)
+                            j.salud = max(1, j.salud - dmg)
+                            c.print(f"[red]Sufres {dmg} de daño. Salud: {j.salud}[/]")
+                        return next_scene
+                    return _a
+                # Registrar faltantes mínimos
+                if 'cofre_bosque_bueno' not in self.escenas:
+                    self.escenas['cofre_bosque_bueno'] = Escena("Cofre bosque (bueno)", "Emergencia.", {}, accion=_fallback_good("eco_lejano"))
+                if 'cofre_bosque_malo' not in self.escenas:
+                    self.escenas['cofre_bosque_malo'] = Escena("Cofre bosque (malo)", "Emergencia.", {}, accion=_fallback_bad("eco_lejano"))
+                if 'cofre_bruma_bueno' not in self.escenas:
+                    self.escenas['cofre_bruma_bueno'] = Escena("Cofre bruma (bueno)", "Emergencia.", {}, accion=_fallback_good("susurro_distante"))
+                if 'cofre_bruma_malo' not in self.escenas:
+                    self.escenas['cofre_bruma_malo'] = Escena("Cofre bruma (malo)", "Emergencia.", {}, accion=_fallback_bad("susurro_distante"))
+                if 'cofre_corrupto_bueno' not in self.escenas:
+                    self.escenas['cofre_corrupto_bueno'] = Escena("Cofre corrupto (bueno)", "Emergencia.", {}, accion=_fallback_good("latido_sombra"))
+                if 'cofre_corrupto_malo' not in self.escenas:
+                    self.escenas['cofre_corrupto_malo'] = Escena("Cofre corrupto (malo)", "Emergencia.", {}, accion=_fallback_bad("latido_sombra"))
+                # Reintentar
+                escena = self.escenas.get(self.escena_actual)
+                if escena is None:
+                    self.console.print(f"[red]Escena perdida: {self.escena_actual}. Redirigiendo al sendero profundo.[/]")
+                    self.escena_actual = 'sendero_profundo'
+                    escena = self.escenas[self.escena_actual]
 
             # Inyectar opción de descanso dinámica si procede
             try:
@@ -1549,7 +1618,8 @@ class Juego:
                     self.console.print("[yellow]Aún no estás listo para otro combate. Exploras un poco más...[/]")
                     mapping = {
                         'combate': 'encrucijada',
-                        'combate_lobo': 'sendero_profundo',
+                        # Evitar bucle: si aún no se puede pelear contra el lobo, enviar a 'eco_lejano' como avance narrativo
+                        'combate_lobo': 'eco_lejano',
                         'combate_espectro': 'bosque_bruma',
                         'combate_guardiana': 'claro_corrupto'
                     }
@@ -1562,12 +1632,7 @@ class Juego:
             except Exception:
                 pass
 
-            # Posible cofre aleatorio en exploración
-            try:
-                if not str(siguiente).startswith("combate") and not str(siguiente).startswith("final") and siguiente != 'cofre':
-                    posible_cofre_aleatorio(self)
-            except Exception:
-                pass
+            # (Cofres aleatorios desactivados según nueva especificación)
 
             # Determinar texto exacto de la opción elegida para detectar acciones especiales (como cruzar el río)
             try:
@@ -1577,16 +1642,67 @@ class Juego:
             except Exception:
                 opcion_elegida_texto = ""
 
-            # Reproducir sonido de cofre al abrirlo (CHEST-1.wav) y evitar que se sobreescriba inmediatamente
-            chest_open_played = False
+            # Sonidos específicos de decisiones narrativas
             try:
-                if self.escena_actual == "cofre" and "abrir" in opcion_elegida_texto.lower():
-                    chest_path = os.path.join(os.path.dirname(__file__), "Sound Effects", "CHEST-1.wav")
+                base_dir = os.path.dirname(__file__)
+                # Meditar un momento -> MEDITATION-1.wav
+                if "meditar un momento" in opcion_elegida_texto.lower():
+                    med_path = os.path.join(base_dir, "Sound Effects", "MEDITATION-1.wav")
+                    if os.path.exists(med_path):
+                        play_effect(med_path)
+                        self._last_meditation_time = time.time()
+                # Escuchar los ecos -> ECHO-1.wav
+                elif "escuchar los ecos" in opcion_elegida_texto.lower():
+                    echo_path = os.path.join(base_dir, "Sound Effects", "ECHO-1.wav")
+                    if os.path.exists(echo_path):
+                        play_effect(echo_path)
+                        self._last_echo_time = time.time()
+                # Seguir adelante / Seguir (si no es combate directo) -> SOLIDWALK-1.wav (pasos sólidos especiales)
+                elif opcion_elegida_texto.lower().startswith("seguir adelante") or opcion_elegida_texto.lower()=="seguir":
+                    solid_path = os.path.join(base_dir, "Sound Effects", "SOLIDWALK-1.wav")
+                    if os.path.exists(solid_path):
+                        play_effect(solid_path)
+                        self._last_solidwalk_time = time.time()
+            except Exception:
+                pass
+
+            # Reproducir sonido de cofre al abrirlo (CHEST-1.wav) y luego buen/mal resultado en escenas resultantes
+            chest_open_played = False
+            chest_result_played = False
+            try:
+                base_dir = os.path.dirname(__file__)
+                chest_scenes = {"cofre", "cofre_bosque", "cofre_bruma_evento", "cofre_corrupto_evento"}
+                if self.escena_actual in chest_scenes and "abrir" in opcion_elegida_texto.lower():
+                    chest_path = os.path.join(base_dir, "Sound Effects", "CHEST-1.wav")
                     if os.path.exists(chest_path):
                         play_effect(chest_path)
                         chest_open_played = True
-                        # timestamp opcional para futuras lógicas si se requiere
                         self._last_chestopen_time = time.time()
+                # Sonidos para resultados buenos/malos (cuando se entra a escenas *_bueno / *_malo)
+                if isinstance(siguiente, str) and (siguiente.endswith("_bueno") or siguiente.endswith("_malo")):
+                    good = siguiente.endswith("_bueno")
+                    # candidatos por orden de preferencia (los primeros quizá no existen aún)
+                    if good:
+                        candidates = ["POSITIVE-1.wav", "WINBATTLE-1.wav", "SELECT2-1.wav", "SELECT1-1.wav"]
+                    else:
+                        candidates = ["BAD-1.wav", "LOSE-1.wav", "SELECT2-1.wav", "SELECT1-1.wav"]
+                    chosen = None
+                    for fname in candidates:
+                        p = os.path.join(base_dir, "Sound Effects", fname)
+                        if os.path.exists(p):
+                            chosen = p
+                            break
+                    if chosen:
+                        if chest_open_played:
+                            time.sleep(0.25)
+                        play_effect(chosen)
+                        chest_result_played = True
+                        # dar un respiro mínimo antes de más efectos que puedan cortar
+                        time.sleep(0.15)
+                        if good:
+                            self._last_positive_time = time.time()
+                        else:
+                            self._last_bad_time = time.time()
             except Exception:
                 pass
 
@@ -1672,43 +1788,48 @@ class Juego:
             except Exception:
                 pass
 
-            # Reproducir sonido de selección al elegir una opción válida
-            try:
-                sfx_path = os.path.join(os.path.dirname(__file__), "Sound Effects", "SELECT3-1.wav")
-                if os.path.exists(sfx_path):
-                    played = False
-                    # Intentar OpenAL sin detener otros efectos para permitir que se oiga junto a ellos
-                    try:
-                        from openal import oalOpen
-                        sel_src = oalOpen(sfx_path)
-                        if sel_src is not None:
-                            # volumen moderado para no tapar efectos prioritarios
-                            try:
-                                sel_src.set_gain(0.8)
-                            except Exception:
+            # Reproducir sonido de selección (omitido si un resultado de cofre acaba de sonar)
+            # Si se acaba de meditar, evitar reproducir sonido de selección para no cortar la meditación
+            recently_meditated = hasattr(self, "_last_meditation_time") and (time.time() - getattr(self, "_last_meditation_time")) < 2.5
+            recently_echo = hasattr(self, "_last_echo_time") and (time.time() - getattr(self, "_last_echo_time")) < 2.0
+            if not chest_result_played and not recently_meditated and not recently_echo:
+                try:
+                    sfx_path = os.path.join(os.path.dirname(__file__), "Sound Effects", "SELECT3-1.wav")
+                    if os.path.exists(sfx_path):
+                        played = False
+                        try:
+                            from openal import oalOpen
+                            sel_src = oalOpen(sfx_path)
+                            if sel_src is not None:
                                 try:
-                                    sel_src.gain = 0.8
+                                    sel_src.set_gain(0.8)
                                 except Exception:
-                                    pass
-                            sel_src.play()
-                            played = True
-                    except Exception:
-                        pass
-                    if not played:
-                        # Fallback: usar play_effect (puede cortar un efecto anterior si no hay openal)
-                        play_effect(sfx_path)
-            except Exception:
-                pass
+                                    try:
+                                        sel_src.gain = 0.8
+                                    except Exception:
+                                        pass
+                                sel_src.play()
+                                played = True
+                        except Exception:
+                            pass
+                        if not played:
+                            play_effect(sfx_path)
+                except Exception:
+                    pass
 
-            # Reproducir sonido de pasos según el terreno del destino (evitar si es un final inmediato)
+            # Reproducir sonido de pasos (omitido si resultado cofre acaba de sonar)
             try:
                 if not siguiente.startswith("final"):
                     # No reproducir pasos si CROSSRIVER acaba de sonar (ventana 0.5s)
                     recent_cross = hasattr(self, "_last_crossriver_time") and (time.time() - getattr(self, "_last_crossriver_time")) < 0.5
                     # No reproducir pasos si ANGEL acaba de sonar (ventana 0.5s)
                     recent_angel = hasattr(self, "_last_angel_time") and (time.time() - getattr(self, "_last_angel_time")) < 0.5
+                    recent_echo = hasattr(self, "_last_echo_time") and (time.time() - getattr(self, "_last_echo_time")) < 2.0
+                    # No reproducir pasos inmediatamente después de meditar para no cortar el sonido
+                    recent_meditation = hasattr(self, "_last_meditation_time") and (time.time() - getattr(self, "_last_meditation_time")) < 2.5
                     cruzando = (self.escena_actual == "rio" and "cruzar" in opcion_elegida_texto.lower())
-                    if not cruzando and not recent_cross and not chest_open_played and not recent_angel:
+                    if (not cruzando and not recent_cross and not chest_open_played and not recent_angel and 
+                        not chest_result_played and not recent_meditation and not recent_echo):
                         base_dir = os.path.dirname(__file__)
                         step_path = os.path.join(base_dir, "Sound Effects", "FORESTWALK-1.wav") if siguiente in TERRAIN_FOREST else os.path.join(base_dir, "Sound Effects", "SOLIDWALK-1.wav")
                         if os.path.exists(step_path):
@@ -1975,7 +2096,7 @@ def crear_escenas():
             "Combate: Lobo",
             "Un Lobo Sombrío salta hacia ti.",
             {},
-            accion=combate_personalizado(1, "bosque_bruma")
+            accion=combate_personalizado(1, "respiro_bruma")
         ),
         # Claro antiguo con trampa y ruta a laberinto
         "claro_antiguo": Escena(
@@ -2005,7 +2126,7 @@ def crear_escenas():
             "Combate: Espectro",
             "La temperatura baja; un espectro emerge.",
             {},
-            accion=combate_personalizado(2, "claro_corrupto")
+            accion=combate_personalizado(2, "respiro_corrupto")
         ),
         "combate_guardiana": Escena(
             "Combate: Guardiana Corrompida",
@@ -2023,8 +2144,72 @@ def crear_escenas():
         "sendero_profundo": Escena(
             "Sendero profundo",
             "Tras la victoria, avanzas por un sendero que se estrecha. El bosque parece observarte.",
-            {"Seguir huellas profundas": "combate_lobo", "Seguir susurros lejanos": "claro_susurros", "Tomar un breve descanso": "descanso_breve", "Visitar la tienda": "tienda_bosque"},
+            {"Seguir huellas profundas": "combate_lobo", "Seguir susurros lejanos": "claro_susurros", "Visitar la tienda": "tienda_bosque"},
             accion=sendero_profundo_accion
+        ),
+        # ---------------- Post-combate secuencias nuevas ---------------- #
+        # Tras primer combate (bestia)
+        "respiro_bosque": Escena(
+            "Respiro del bosque",
+            "El aire se siente más ligero tras la batalla. Hojas caen lentamente mientras evalúas tus heridas.",
+            {"Seguir adelante": "cofre_bosque", "Escuchar los ecos": "eco_lejano"}
+        ),
+        "cofre_bosque": Escena(
+            "Cofre entre raíces",
+            "Entre raíces retorcidas aparece un pequeño cofre cubierto de musgo.",
+            {"Abrir el cofre": "cofre_bosque_abierto", "Ignorarlo y avanzar": "eco_lejano"}
+        ),
+        "cofre_bosque_abierto": Escena(
+            "Interior del cofre",
+            "Dentro brilla una luz y una sombra palpita inestable.",
+            {"Tomar la luz": "cofre_bosque_bueno", "Tocar la sombra": "cofre_bosque_malo"}
+        ),
+        "eco_lejano": Escena(
+            "Ecos lejanos",
+            "Un eco distante te guía hacia un sendero más profundo.",
+            {"Avanzar": "sendero_profundo"}
+        ),
+        # Tras combate del lobo
+        "respiro_bruma": Escena(
+            "Respiro en la bruma",
+            "La neblina se separa unos instantes permitiéndote recuperar el aliento.",
+            {"Seguir": "cofre_bruma_evento", "Meditar un momento": "susurro_distante"}
+        ),
+        "cofre_bruma_evento": Escena(
+            "Cofre envuelto en bruma",
+            "La bruma gira alrededor de un cofre con inscripciones desvaídas.",
+            {"Abrir el cofre": "cofre_bruma_abierto", "Ignorarlo y seguir": "susurro_distante"}
+        ),
+        "cofre_bruma_abierto": Escena(
+            "Elección difusa",
+            "Al abrirlo, ves un fulgor cálido y una esfera fría que absorbe luz.",
+            {"Tomar el fulgor": "cofre_bruma_bueno", "Tomar la esfera": "cofre_bruma_malo"}
+        ),
+        "susurro_distante": Escena(
+            "Susurro distante",
+            "Un susurro persistente te empuja hacia zonas más densas de bruma.",
+            {"Adentrarte": "bosque_bruma"}
+        ),
+        # Tras combate del espectro
+        "respiro_corrupto": Escena(
+            "Respiro de corrupción",
+            "El aire viciado se aquieta, como si la derrota del espectro hubiera debilitado la podredumbre.",
+            {"Seguir avanzando": "cofre_corrupto_evento", "Observar el terreno": "latido_sombra"}
+        ),
+        "cofre_corrupto_evento": Escena(
+            "Cofre ennegrecido",
+            "Un cofre agrietado rezuma hilos oscuros.",
+            {"Abrir el cofre": "cofre_corrupto_abierto", "Ignorarlo y continuar": "latido_sombra"}
+        ),
+        "cofre_corrupto_abierto": Escena(
+            "Decisión corrupta",
+            "Dentro, una chispa pura lucha contra un fragmento oscuro.",
+            {"Tomar la chispa": "cofre_corrupto_bueno", "Tomar el fragmento": "cofre_corrupto_malo"}
+        ),
+        "latido_sombra": Escena(
+            "Latido de la sombra",
+            "Sientes un latido subterráneo que marca el camino hacia el corazón corrupto.",
+            {"Seguir el latido": "claro_corrupto"}
         ),
         "claro_susurros": Escena(
             "Claro de susurros",
@@ -2132,6 +2317,68 @@ def crear_escenas():
             {}
         ),
     }
+
+    # Acciones dinámicas para cofres (buenas/malas) reutilizables
+    def chest_good_action(next_scene):
+        def _a(j):
+            console = Console()
+            base_dir = os.path.dirname(__file__)
+            # 50% monedas / curación
+            if random.choice([True, False]):
+                if j.salud >= j.salud_max:
+                    j.monedas += 1
+                    console.print("[dim]Energía curativa desaprovechada. Obtienes 1 moneda.[/]")
+                else:
+                    heal = random.randint(10,15)
+                    antes = j.salud
+                    j.salud = min(j.salud_max, j.salud + heal)
+                    console.print(f"[green]Energía benevolente: Salud {antes}->{j.salud} (+{j.salud-antes}).[/]")
+            else:
+                gain = random.randint(2,5)
+                j.monedas += gain
+                console.print(f"[yellow]Encuentras {gain} monedas brillantes. Total: {j.monedas}[/]")
+            # reproducir sonido positivo con fallback
+            positive_candidates = ["POSITIVE-1.wav", "WINBATTLE-1.wav", "SELECT2-1.wav", "SELECT1-1.wav"]
+            for fname in positive_candidates:
+                pos_path = os.path.join(base_dir, "Sound Effects", fname)
+                if os.path.exists(pos_path):
+                    play_effect(pos_path)
+                    break
+            return next_scene
+        return _a
+
+    def chest_bad_action(next_scene):
+        def _a(j):
+            console = Console()
+            base_dir = os.path.dirname(__file__)
+            if random.choice([True, False]):
+                loss = random.randint(1,3)
+                loss = min(loss, j.monedas)
+                j.monedas -= loss
+                console.print(f"[red]Un gas tóxico corroe tus provisiones. Pierdes {loss} monedas. Total: {j.monedas}[/]")
+            else:
+                dmg = random.randint(5,10)
+                j.salud = max(1, j.salud - dmg)
+                console.print(f"[red]Una descarga oscura te hiere (-{dmg}). Salud: {j.salud}[/]")
+            # reproducir sonido negativo con fallback
+            negative_candidates = ["BAD-1.wav", "LOSE-1.wav", "SELECT2-1.wav", "SELECT1-1.wav"]
+            for fname in negative_candidates:
+                bad_path = os.path.join(base_dir, "Sound Effects", fname)
+                if os.path.exists(bad_path):
+                    play_effect(bad_path)
+                    break
+            return next_scene
+        return _a
+
+    # Asignar acciones a escenas de cofres
+    escenas["cofre_bosque_bueno"] = Escena("Cofre del bosque (bueno)", "La luz te envuelve.", {}, accion=chest_good_action("eco_lejano"))
+    escenas["cofre_bosque_malo"] = Escena("Cofre del bosque (malo)", "La sombra se agita.", {}, accion=chest_bad_action("eco_lejano"))
+    escenas["cofre_bruma_bueno"] = Escena("Cofre de la bruma (bueno)", "El fulgor te fortalece.", {}, accion=chest_good_action("susurro_distante"))
+    escenas["cofre_bruma_malo"] = Escena("Cofre de la bruma (malo)", "La esfera drena energía.", {}, accion=chest_bad_action("susurro_distante"))
+    escenas["cofre_corrupto_bueno"] = Escena("Cofre corrupto (bueno)", "La chispa rechaza la corrupción.", {}, accion=chest_good_action("latido_sombra"))
+    escenas["cofre_corrupto_malo"] = Escena("Cofre corrupto (malo)", "El fragmento oscuro se quiebra liberando dolor.", {}, accion=chest_bad_action("latido_sombra"))
+
+    return escenas
 
 if __name__ == "__main__":
     main()
