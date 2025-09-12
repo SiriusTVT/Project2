@@ -1,12 +1,7 @@
-"""
-Scenes Module for Adventure Time Game
-
-Contains scene management, scene creation, and shop functionality.
-"""
-
 import os
 import sys
 import random
+import time
 from rich.console import Console
 from utils import typewriter, REST_SENTINEL, laberinto_action, descanso_breve_accion, sendero_profundo_accion
 from combat import combate, combate_personalizado
@@ -37,15 +32,12 @@ class Escena:
 
 
 def tienda_factory(retorno: str):
-    """Crea una acción de escena que abre una tienda y retorna a `retorno`."""
     def _tienda(j):
         console = Console()
         console.print("\n[bold cyan]Tienda del viajero[/]")
         
-        # Detener música de aventura temporalmente y reproducir música de tienda
         stop_bg_audio()
         
-        # parar efectos cortos en curso
         from audio_manager import LAST_SFX
         try:
             if LAST_SFX.get("src") is not None:
@@ -64,7 +56,6 @@ def tienda_factory(retorno: str):
         except Exception:
             pass
         
-        # Reproducir música de tienda
         store_src, used_winsound_store = play_store_music()
         
         while True:
@@ -78,7 +69,6 @@ def tienda_factory(retorno: str):
             console.print("6. Salir de la tienda")
             elec = input("Opción (1-6): ").strip()
             
-            # Sonido de selección para cualquier opción ingresada (válida o salida)
             try:
                 sel_path = os.path.join(os.path.dirname(__file__), "Sound Effects", "SELECT3-1.wav")
                 if os.path.exists(sel_path):
@@ -127,9 +117,7 @@ def tienda_factory(retorno: str):
                     console.print("[red]Monedas insuficientes.[/]")
             elif elec == '6' or elec == '':
                 console.print("[dim]Abandonas la tienda.[/]")
-                # detener música tienda
                 stop_store_music(store_src, used_winsound_store)
-                # reanudar aventura
                 play_bg_music()
                 return retorno
             else:
@@ -138,7 +126,6 @@ def tienda_factory(retorno: str):
 
 
 def crear_escenas():
-    """Crea y retorna el diccionario de todas las escenas del juego."""
     from utils import get_intro_lines
     intro_text = "\n".join(get_intro_lines())
     
@@ -182,7 +169,7 @@ def crear_escenas():
             "Mapa secreto",
             "Encuentras un mapa con la ubicación de un santuario escondido.",
             {"Seguir el mapa": "encrucijada"},
-            accion=lambda jugador: setattr(jugador, "tiene_piedra", True)
+            accion=lambda jugador: (setattr(jugador, "tiene_piedra", True), None)[-1]
         ),
 
         "rugido": Escena(
@@ -205,8 +192,6 @@ def crear_escenas():
             {"Luchar": "combate"},
             accion=None
         ),
-
-        # Ruta alternativa - enemigo 1
         "sendero_sombrio": Escena(
             "Sendero sombrío",
             "La luz casi no atraviesa las copas. Un gruñido se escucha entre los arbustos.",
@@ -220,7 +205,6 @@ def crear_escenas():
             accion=combate_personalizado(1, "respiro_bruma")
         ),
 
-        # Claro antiguo con trampa y ruta a laberinto
         "claro_antiguo": Escena(
             "Claro antiguo",
             "Piedras cubiertas de musgo forman un círculo. Algo de magia antigua persiste.",
@@ -246,8 +230,6 @@ def crear_escenas():
             {},
             accion=laberinto_action
         ),
-
-        # Combates avanzados disponibles tras progreso
         "combate_espectro": Escena(
             "Combate: Espectro",
             "La temperatura baja; un espectro emerge.",
@@ -268,8 +250,6 @@ def crear_escenas():
             {},
             accion=combate
         ),
-
-        # Nueva progresión orgánica tras cada victoria
         "sendero_profundo": Escena(
             "Sendero profundo",
             "Tras la victoria, avanzas por un sendero que se estrecha. El bosque parece observarte.",
@@ -277,8 +257,6 @@ def crear_escenas():
             accion=sendero_profundo_accion
         ),
 
-        # ---------------- Post-combate secuencias nuevas ---------------- #
-        # Tras primer combate (bestia)
         "respiro_bosque": Escena(
             "Respiro del bosque",
             "El aire se siente más ligero tras la batalla. Hojas caen lentamente mientras evalúas tus heridas.",
@@ -302,8 +280,6 @@ def crear_escenas():
             "Un eco distante te guía hacia un sendero más profundo.",
             {"Avanzar": "sendero_profundo"}
         ),
-
-        # Tras combate del lobo
         "respiro_bruma": Escena(
             "Respiro en la bruma",
             "La neblina se separa unos instantes permitiéndote recuperar el aliento.",
@@ -327,8 +303,6 @@ def crear_escenas():
             "Un susurro persistente te empuja hacia zonas más densas de bruma.",
             {"Adentrarte": "bosque_bruma"}
         ),
-
-        # Tras combate del espectro
         "respiro_corrupto": Escena(
             "Respiro de corrupción",
             "El aire viciado se aquieta, como si la derrota del espectro hubiera debilitado la podredumbre.",
@@ -413,8 +387,6 @@ def crear_escenas():
             {},
             accion=lambda j: ("montaña" if getattr(j,'tiene_piedra', False) else "cueva")
         ),
-
-        # Tiendas
         "tienda_bosque": Escena(
             "Tienda del Bosque",
             "Un viajero ofrece objetos útiles entre raíces retorcidas.",
@@ -450,7 +422,6 @@ def crear_escenas():
              "Rechazar y salir corriendo": "final_oscuro"}
         ),
 
-        # finales
         "final_heroico": Escena(
             "Final Heroico",
             "Colocas la piedra en el altar. El bosque se ilumina y la magia oscura desaparece.\n¡Has salvado al bosque!",
@@ -470,12 +441,13 @@ def crear_escenas():
         ),
     }
 
-    # Acciones dinámicas para cofres (buenas/malas) reutilizables
     def chest_good_action(next_scene):
         def _a(j):
             console = Console()
             base_dir = os.path.dirname(__file__)
-            # 50% monedas / curación
+            chest_path = os.path.join(base_dir, "Sound Effects", "CHEST-1.wav")
+            if os.path.exists(chest_path):
+                play_effect(chest_path)
             if random.choice([True, False]):
                 if j.salud >= j.salud_max:
                     j.monedas += 1
@@ -489,7 +461,6 @@ def crear_escenas():
                 gain = random.randint(2,5)
                 j.monedas += gain
                 console.print(f"[yellow]Encuentras {gain} monedas brillantes. Total: {j.monedas}[/]")
-            # reproducir sonido positivo con fallback
             positive_candidates = ["POSITIVE-1.wav", "WINBATTLE-1.wav", "SELECT2-1.wav", "SELECT1-1.wav"]
             for fname in positive_candidates:
                 pos_path = os.path.join(base_dir, "Sound Effects", fname)
@@ -503,6 +474,9 @@ def crear_escenas():
         def _a(j):
             console = Console()
             base_dir = os.path.dirname(__file__)
+            chest_path = os.path.join(base_dir, "Sound Effects", "CHEST-1.wav")
+            if os.path.exists(chest_path):
+                play_effect(chest_path)
             if random.choice([True, False]):
                 loss = random.randint(1,3)
                 loss = min(loss, j.monedas)
@@ -512,7 +486,6 @@ def crear_escenas():
                 dmg = random.randint(5,10)
                 j.salud = max(1, j.salud - dmg)
                 console.print(f"[red]Una descarga oscura te hiere (-{dmg}). Salud: {j.salud}[/]")
-            # reproducir sonido negativo con fallback
             negative_candidates = ["BAD-1.wav", "LOSE-1.wav", "SELECT2-1.wav", "SELECT1-1.wav"]
             for fname in negative_candidates:
                 bad_path = os.path.join(base_dir, "Sound Effects", fname)
@@ -521,8 +494,6 @@ def crear_escenas():
                     break
             return next_scene
         return _a
-
-    # Asignar acciones a escenas de cofres
     escenas["cofre_bosque_bueno"] = Escena("Cofre del bosque (bueno)", "La luz te envuelve.", {}, accion=chest_good_action("eco_lejano"))
     escenas["cofre_bosque_malo"] = Escena("Cofre del bosque (malo)", "La sombra se agita.", {}, accion=chest_bad_action("eco_lejano"))
     escenas["cofre_bruma_bueno"] = Escena("Cofre de la bruma (bueno)", "El fulgor te fortalece.", {}, accion=chest_good_action("susurro_distante"))

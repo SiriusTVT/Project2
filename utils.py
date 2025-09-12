@@ -1,31 +1,17 @@
-"""
-Utilities Module for Adventure Time Game
-
-Contains utility functions and constants used throughout the game.
-"""
-
 import time
 import random
 from rich.console import Console
 
-# velocidad por defecto para el efecto de "typewriter" (segundos por carácter)
-# se puede ajustar con la función `seleccionar_velocidad`
 TEXT_SPEED = 0.03
 
-# Referencia global a la instancia del juego para acceder a bg_audio_source
 JUEGO_REF = None
 REST_SENTINEL = "__DESCANSO_DYNAMIC__"
 
-# Conjuntos de terreno para sonido de pasos
 TERRAIN_FOREST = {"inicio", "izquierda", "rio", "rugido", "encrucijada"}
 TERRAIN_SOLID = {"cabaña", "cofre", "mapa", "pelea", "combate", "montaña", "cueva", "final_heroico", "final_oscuro", "final_neutral", "sendero_profundo", "bosque_bruma", "claro_corrupto", "claro_final"}
 
 
 def seleccionar_velocidad(console):
-    """Pregunta al usuario por la velocidad de texto y ajusta TEXT_SPEED.
-
-    Retorna el valor numérico de la velocidad seleccionada.
-    """
     global TEXT_SPEED
     console.print("Elige la velocidad de texto: [b]rápida[/] (r), [b]normal[/] (n), [b]lenta[/] (l)")
     try:
@@ -45,34 +31,17 @@ def seleccionar_velocidad(console):
 
 
 def typewriter(text, delay=None, console=None, style=None):
-    """Imprime `text` carácter por carácter para simular que alguien lo escribe.
-
-    Args:
-        text (str): cadena a imprimir.
-        delay (float|None): segundos entre cada carácter. Si es None se usa `TEXT_SPEED`.
-        console (rich.console.Console|None): consola para imprimir (si no se pasa, se crea una nueva).
-        style (str|None): estilo para pasar a console.print.
-    """
     if console is None:
         console = Console()
-    # usar la velocidad global si no se pasa explícitamente
     if delay is None:
         delay = TEXT_SPEED
-    # imprimir carácter a carácter sin saltos hasta terminar la línea
     for ch in text:
-        # rich.Console.print acepta end, lo usamos para no añadir newline hasta el final
         console.print(ch, end="", style=style)
         time.sleep(delay)
-    # terminar la línea
     console.print("")
 
 
 def get_intro_lines():
-    """Devuelve la lista de párrafos de la introducción.
-
-    Esto permite reusar el mismo texto en la escena `inicio` y en la
-    función que muestra la intro sin repetir cadenas.
-    """
     return [
         "Abres los ojos lentamente y descubres que estás en medio de un bosque desconocido.",
         "No recuerdas cómo llegaste hasta aquí.",
@@ -88,12 +57,9 @@ def get_intro_lines():
 
 
 def generar_laberinto(tam):
-    """Genera un laberinto de tamaño tam x tam usando DFS."""
     import random
-    # Representación simple: 0 pared, 1 camino
     ancho = alto = tam
     lab = [[0]*ancho for _ in range(alto)]
-    # Carvar con DFS
     dirs = [(1,0),(-1,0),(0,1),(0,-1)]
     def carve(x,y):
         lab[y][x]=1
@@ -109,7 +75,6 @@ def generar_laberinto(tam):
 
 
 def laberinto_action(jugador):
-    """Acción del laberinto dinámico."""
     console = Console()
     dificultad = getattr(jugador,'nivel_progreso',0)
     tam = 7 if dificultad<2 else (9 if dificultad<4 else 11)
@@ -122,7 +87,6 @@ def laberinto_action(jugador):
     trampa_intervalo = max(6, tam//2)
     
     while (px,py)!=(ex,ey) and pasos<pasos_max and jugador.salud>0:
-        # vista parcial 5x5
         vista=""
         for y in range(max(0,py-2), min(tam,py+3)):
             fila=""
@@ -147,7 +111,6 @@ def laberinto_action(jugador):
         if 0<=nx<tam and 0<=ny<tam and lab[ny][nx]==1:
             px,py = nx,ny
             pasos+=1
-            # trampa periódica
             if pasos % trampa_intervalo == 0 and pasos>0:
                 import random
                 if random.random()<0.5:
@@ -160,17 +123,12 @@ def laberinto_action(jugador):
     if (px,py)==(ex,ey) and jugador.salud>0:
         console.print("[bold green]¡Escapas del laberinto! Sientes que has crecido en experiencia." )
         jugador.nivel_progreso = getattr(jugador,'nivel_progreso',0)+1
-        # decidir hacia dónde conduce
         return "montaña" if jugador.tiene_piedra else "cueva"
     console.print("[bold red]Fracaso en el laberinto...[/]")
     return "final_oscuro"
 
 
 def descanso_breve_accion(j):
-    """Acción de descanso breve con límite de 3 usos.
-
-    Cura +8 salud hasta 3 veces. A partir de la 4ª vez solo muestra mensaje sin curar.
-    """
     from rich.console import Console
     c = Console()
     if getattr(j, 'descansos', 0) >= 3:
@@ -187,12 +145,10 @@ def descanso_breve_accion(j):
 
 
 def sendero_profundo_accion(j):
-    """Acción previa de la escena 'sendero_profundo' que oculta la opción de descanso tras 3 usos."""
     try:
         if getattr(j, 'descansos', 0) >= 3 and JUEGO_REF is not None:
                 sc = JUEGO_REF.escenas.get("sendero_profundo")
                 if sc and "Tomar un breve descanso" in sc.opciones:
-                    # Crear nuevo dict sin la opción de descanso
                     nuevas = {k:v for k,v in sc.opciones.items() if k != "Tomar un breve descanso"}
                     sc.opciones = nuevas
     except Exception:
