@@ -1,9 +1,3 @@
-"""
-Combat Module for Adventure Time Game
-
-Contains all combat-related functions and mechanics.
-"""
-
 import os
 import random
 import time
@@ -13,24 +7,16 @@ from audio_manager import play_effect, play_defeat_audio, stop_defeat_audio
 
 
 def handle_derrota(jugador):
-    """Gestiona audio y flujo cuando el jugador es derrotado en cualquier combate.
-
-    Devuelve 'reiniciar' si el usuario desea volver a empezar o 'final_oscuro' si no.
-    """
     console = Console()
     console.print("\n[bold red]Has sido derrotado...[/]")
     
-    # Reproducir audios de derrota
     play_defeat_audio()
-    
-    # Preguntar reinicio
     while True:
         try:
             resp = input("¿Quieres intentarlo de nuevo desde el inicio? (s/n): ").strip().lower()
         except (KeyboardInterrupt, EOFError):
             resp = 'n'
         if resp.startswith('s'):
-            # detener audios derrota
             stop_defeat_audio()
             if hasattr(jugador, 'restaurar'):
                 jugador.restaurar()
@@ -41,7 +27,6 @@ def handle_derrota(jugador):
 
 
 def combate_personalizado(etapa: int, proxima_escena="sendero_profundo"):
-    """Devuelve una función de acción para una Escena que ejecuta un combate escalado."""
     def _accion(jugador):
         enemigo = generar_enemigo(etapa)
         console = Console()
@@ -91,7 +76,7 @@ def combate_personalizado(etapa: int, proxima_escena="sendero_profundo"):
                     continue
                 defense_used += 1
                 defensa = True
-                skip_enemy_attack = True  # niega el ataque enemigo
+                skip_enemy_attack = True 
                 play_effect(os.path.join(os.path.dirname(__file__), "Player Effects", "SHIELD-1.wav"))
                 enemigo.salud -= 5
                 console.print("[green]Bloqueas todo el daño y contraatacas por [yellow]5[/].")
@@ -107,7 +92,6 @@ def combate_personalizado(etapa: int, proxima_escena="sendero_profundo"):
                 curar = min(15, deficit)
                 jugador.salud += curar
                 heals_used += 1
-                # Ataque oportunista del enemigo (1-10) y se salta ataque normal este turno
                 dano_rebote = random.randint(1,10)
                 jugador.salud = max(1, jugador.salud - dano_rebote)
                 skip_enemy_attack = True
@@ -116,7 +100,6 @@ def combate_personalizado(etapa: int, proxima_escena="sendero_profundo"):
                 console.print("[red]Acción no válida[/]")
                 continue
                 
-            # turno enemigo
             if enemigo.salud > 0 and not skip_enemy_attack:
                 base = enemigo.danio
                 tipo = random.choice(["normal","fuerte"]) if etapa > 1 else "normal"
@@ -126,7 +109,6 @@ def combate_personalizado(etapa: int, proxima_escena="sendero_profundo"):
                     base = 0
                     defensa = False
                     
-                # habilidades
                 if hasattr(enemigo,'habilidades'):
                     hab = enemigo.habilidades
                     if 'sangrado' in hab and random.random() < hab['sangrado']:
@@ -153,9 +135,7 @@ def combate_personalizado(etapa: int, proxima_escena="sendero_profundo"):
         if jugador.salud > 0:
             console.print(f"\n[bold green]¡Has derrotado a {enemigo.nombre}![/]")
             play_effect(os.path.join(os.path.dirname(__file__), "Sound Effects", "WINBATTLE-1.wav"))
-            # escalar progreso
             jugador.nivel_progreso = getattr(jugador,'nivel_progreso',0)+1
-            # Recompensa monetaria (nueva regla 5-15)
             recompensa = random.randint(5,15)
             jugador.monedas += recompensa
             console.print(f"[yellow]Obtienes {recompensa} monedas. Total: {jugador.monedas}[/]")
@@ -168,7 +148,6 @@ def combate_personalizado(etapa: int, proxima_escena="sendero_profundo"):
 
 
 def combate(jugador):
-    """Función de combate básico contra una bestia sombría."""
     console = Console()
     enemigo = Enemigo()
     console.print("\n[bold red]¡Una bestia sombría aparece![/]")
@@ -261,7 +240,6 @@ def combate(jugador):
         console.print("\n[bold green]¡Has vencido a la bestia![/]")
         play_effect(os.path.join(os.path.dirname(__file__), "Sound Effects", "WINBATTLE-1.wav"))
         jugador.nivel_progreso = max(getattr(jugador, 'nivel_progreso', 0), 1)
-        # Recompensa monetaria (5-15)
         recompensa = random.randint(5,15)
         jugador.monedas += recompensa
         console.print(f"[yellow]Obtienes {recompensa} monedas. Total: {jugador.monedas}[/]")
