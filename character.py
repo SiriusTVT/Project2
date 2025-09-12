@@ -1,22 +1,14 @@
-"""
-Character Module for Adventure Time Game
-
-Contains character classes and enemy generation logic.
-"""
-
 import random
 from rich.console import Console
 
 
 class Personaje:
     def __init__(self, nombre, clase=None, nivel=1):
-        """Inicializa el personaje con estadísticas base, poder, economía y descansos."""
         self.nombre = nombre or "Aventurero"
         self.nivel = nivel or 1
         self.clase = (clase or "explorador").lower()
         self.tiene_piedra = False
-        # Contadores para nuevas reglas
-        self.decisiones_desde_ultimo_combate = 0  # Debe alcanzar >=3 para permitir otro combate
+        self.decisiones_desde_ultimo_combate = 0
         self.combates_ganados = 0
 
         stats = {
@@ -38,16 +30,11 @@ class Personaje:
         }
         self.poder = self.poderes.get(self.clase, 'Ataque básico')
         self.poder_usos = 2
-
-        # Economía
         self.monedas = 10
         self.amuleto_vigor = False
-
-        # Conteo de descansos disponibles (máximo 3)
         self.descansos = 0
 
     def restaurar(self):
-        """Restaura el personaje a su estado inicial."""
         self.salud = self.salud_max
         self.poder_usos = 2
         self.tiene_piedra = False
@@ -73,7 +60,6 @@ class Enemigo:
 
 
 def generar_enemigo(etapa: int):
-    """Genera un enemigo según la etapa de dificultad (1..N)."""
     catalogo = {
         1: ("Lobo Sombrío", 70, 14, {"sangrado": 0.25}),
         2: ("Espectro del Bosque", 90, 16, {"drain": 0.3}),
@@ -86,10 +72,12 @@ def generar_enemigo(etapa: int):
 
 
 def abrir_cofre(jugador, console):
-    """Otorga el contenido de un cofre: monedas (5-10) o curación (10-20).
-    Si el jugador está al máximo y sale curación, recibe 1 moneda en su lugar."""
     if jugador is None:
         return
+    from audio_manager import play_effect
+    import os
+    chest_path = os.path.join(os.path.dirname(__file__), "Sound Effects", "CHEST-1.wav")
+    play_effect(chest_path)
     tipo = random.choice(["monedas", "curacion"])
     if tipo == "monedas":
         cantidad = random.randint(5, 10)
@@ -107,7 +95,6 @@ def abrir_cofre(jugador, console):
 
 
 def posible_cofre_aleatorio(juego):
-    """15% de probabilidad de disparar un cofre aleatorio en exploración."""
     try:
         if random.random() < 0.15:
             abrir_cofre(juego.jugador, juego.console)
