@@ -1,15 +1,7 @@
-"""
-Audio Manager Module for Adventure Time Game
-
-Handles all audio functionality including OpenAL and winsound management,
-audio references, and sound effects.
-"""
-
 import os
 import sys
 import time
 
-# Referencias globales para audio
 FIGHT_AUDIO_REF = {"src": None, "winsound": False}
 BG_AUDIO_REF = {"src": None, "winsound": False}
 DEFEAT_AUDIO = {"sources": [], "winsound": False}
@@ -17,13 +9,8 @@ LAST_SFX = {"src": None, "winsound": False}
 
 
 def play_effect(path: str, allow_winsound: bool = True) -> bool:
-    """Reproduce un efecto deteniendo el anterior para evitar solapamientos.
-
-    Prioriza OpenAL; si no está disponible usa winsound (si se permite y no se quiere preservar otro audio).
-    """
     if not path or not os.path.exists(path):
         return False
-    # Detener efecto anterior (solo efecto, no música de fondo)
     try:
         if LAST_SFX["src"] is not None:
             try:
@@ -41,7 +28,6 @@ def play_effect(path: str, allow_winsound: bool = True) -> bool:
             LAST_SFX["winsound"] = False
     except Exception:
         pass
-    # Intentar OpenAL
     try:
         from openal import oalOpen
         try:
@@ -55,7 +41,6 @@ def play_effect(path: str, allow_winsound: bool = True) -> bool:
             pass
     except Exception:
         pass
-    # Fallback winsound
     if allow_winsound and sys.platform.startswith("win"):
         try:
             import winsound
@@ -69,10 +54,6 @@ def play_effect(path: str, allow_winsound: bool = True) -> bool:
 
 
 def _play_sfx(filepath):
-    """Reproduce un efecto de sonido corto de forma no bloqueante.
-
-    Intenta OpenAL primero; si falla y es Windows, usa winsound.
-    """
     try:
         from openal import oalOpen
         if os.path.exists(filepath):
@@ -85,7 +66,6 @@ def _play_sfx(filepath):
                 pass
     except Exception:
         pass
-    # Fallback Windows
     try:
         if sys.platform.startswith("win") and os.path.exists(filepath):
             import winsound
@@ -97,7 +77,6 @@ def _play_sfx(filepath):
 
 
 def stop_fight_audio():
-    """Detiene la música de combate."""
     try:
         global FIGHT_AUDIO_REF
         if FIGHT_AUDIO_REF.get("src") is not None:
@@ -118,7 +97,6 @@ def stop_fight_audio():
 
 
 def stop_bg_audio():
-    """Detiene la música de fondo."""
     try:
         global BG_AUDIO_REF
         if BG_AUDIO_REF.get("src") is not None:
@@ -139,7 +117,6 @@ def stop_bg_audio():
 
 
 def play_defeat_audio():
-    """Reproduce audios de derrota (FAILBATTLE + LOSE) simultáneamente si es posible."""
     base_dir = os.path.dirname(__file__)
     fail_path = os.path.join(base_dir, "Music", "FAILBATTLE-1.wav")
     lose_path = os.path.join(base_dir, "Sound Effects", "LOSE-1.wav")
@@ -155,7 +132,7 @@ def play_defeat_audio():
                     if s is not None:
                         if p.endswith("FAILBATTLE-1.wav"):
                             try:
-                                s.set_gain(0.4)  # un poco más bajo
+                                s.set_gain(0.4) 
                             except Exception:
                                 pass
                         s.play()
@@ -170,7 +147,6 @@ def play_defeat_audio():
         pass
     
     if not played_openal:
-        # Fallback secuencial
         play_effect(fail_path)
         play_effect(lose_path)
         if sys.platform.startswith("win"):
@@ -181,7 +157,6 @@ def play_defeat_audio():
 
 
 def stop_defeat_audio():
-    """Detiene los audios de derrota."""
     for s in DEFEAT_AUDIO.get("sources", []):
         try:
             s.stop()
@@ -198,11 +173,9 @@ def stop_defeat_audio():
 
 
 def play_fight_music(volume=0.3):
-    """Reproduce música de combate."""
     fight_path = os.path.join(os.path.dirname(__file__), "Music", "FIGHT-1.wav")
     if os.path.exists(fight_path):
         played = False
-        # Intentar siempre OpenAL primero
         try:
             from openal import oalOpen
             f_src = oalOpen(fight_path)
@@ -224,7 +197,6 @@ def play_fight_music(volume=0.3):
                 return f_src
         except Exception:
             pass
-        # Si OpenAL no funcionó usar winsound si está en Windows
         if not played and sys.platform.startswith("win"):
             try:
                 import winsound
@@ -242,10 +214,8 @@ def play_fight_music(volume=0.3):
 
 
 def play_bg_music(volume=0.2):
-    """Reproduce música de aventura de fondo."""
     adventure_path = os.path.join(os.path.dirname(__file__), "Music", "ADVENTURE-1.wav")
     if os.path.exists(adventure_path):
-        # intentar openal
         try:
             from openal import oalOpen
             adv_src = oalOpen(adventure_path)
@@ -281,7 +251,6 @@ def play_bg_music(volume=0.2):
 
 
 def play_intro_music(volume=0.2):
-    """Reproduce música de introducción."""
     audio_path = os.path.join(os.path.dirname(__file__), "Music", "INTRO-1.wav")
     if os.path.exists(audio_path):
         try:
@@ -298,7 +267,6 @@ def play_intro_music(volume=0.2):
                 audio_source.play()
                 return audio_source
         except Exception:
-            # fallback winsound en Windows
             try:
                 if sys.platform.startswith("win"):
                     import winsound
@@ -310,10 +278,8 @@ def play_intro_music(volume=0.2):
 
 
 def play_narration():
-    """Reproduce narración (NARRADOR.wav)."""
     narr_path = os.path.join(os.path.dirname(__file__), "Music", "NARRADOR.wav")
     if os.path.exists(narr_path):
-        # intentar openal primero para no cortar la música intro
         try:
             from openal import oalOpen
             narr_source = oalOpen(narr_path)
@@ -321,7 +287,6 @@ def play_narration():
                 narr_source.play()
                 return narr_source, False
         except Exception:
-            # fallback winsound (esto reemplazará la música intro si se usa winsound)
             if sys.platform.startswith("win"):
                 try:
                     import winsound
@@ -333,7 +298,6 @@ def play_narration():
 
 
 def stop_narration(narr_source, narr_winsound):
-    """Detiene la narración."""
     try:
         if narr_source:
             narr_source.stop()
@@ -345,7 +309,6 @@ def stop_narration(narr_source, narr_winsound):
 
 
 def play_store_music(volume=0.25):
-    """Reproduce música de tienda."""
     store_path = os.path.join(os.path.dirname(__file__), "Music", "STORE-1.wav")
     if os.path.exists(store_path):
         try:
@@ -375,7 +338,6 @@ def play_store_music(volume=0.25):
 
 
 def stop_store_music(store_src, used_winsound_store):
-    """Detiene música de tienda."""
     try:
         if store_src is not None:
             try: 
@@ -393,9 +355,7 @@ def stop_store_music(store_src, used_winsound_store):
 
 
 def create_ambient_source(filepath, volume=0.2, looping=True):
-    """Crea una fuente de audio ambiente (río, cueva, etc.)."""
     if os.path.exists(filepath):
-        # Preferir openal
         try:
             from openal import oalOpen
             src = oalOpen(filepath)
@@ -407,7 +367,6 @@ def create_ambient_source(filepath, volume=0.2, looping=True):
                         src.gain = volume
                     except Exception: 
                         pass
-                # intentar loop si la implementación lo permite
                 if looping:
                     try:
                         src.set_looping(True)
@@ -421,7 +380,6 @@ def create_ambient_source(filepath, volume=0.2, looping=True):
         except Exception:
             pass
         
-        # fallback winsound
         if sys.platform.startswith("win"):
             try:
                 import winsound
@@ -433,7 +391,6 @@ def create_ambient_source(filepath, volume=0.2, looping=True):
 
 
 def stop_ambient_source(src, winsound_flag):
-    """Detiene una fuente de audio ambiente."""
     try:
         if src is not None:
             src.stop()
@@ -449,12 +406,10 @@ def stop_ambient_source(src, winsound_flag):
 
 
 def cleanup_all_audio():
-    """Limpia todas las fuentes de audio activas."""
     stop_fight_audio()
     stop_bg_audio()
     stop_defeat_audio()
     
-    # Detener último efecto SFX
     try:
         if LAST_SFX.get("src") is not None:
             try:
