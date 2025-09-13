@@ -28,10 +28,6 @@ def main():
         _utils.JUEGO_REF = juego
     except Exception:
         pass
-    try:
-        play_bg_music()
-    except Exception:
-        pass
     juego.run()
 
 
