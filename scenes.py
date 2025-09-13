@@ -96,6 +96,7 @@ def tienda_factory(retorno: str):
                 if j.monedas >= 8:
                     j.monedas -= 8
                     j.danio += 3
+                    play_effect(os.path.join(os.path.dirname(__file__), "Sound Effects", "SHARP-1.wav"))
                     console.print(f"[yellow]Tu daño aumenta a {j.danio}. (Monedas: {j.monedas})[/]")
                 else:
                     console.print("[red]Monedas insuficientes.[/]")
