@@ -278,6 +278,13 @@ class Juego:
                 if self.jugador.salud >= self.jugador.salud_max:
                     self.console.print("[dim]Tu salud ya está completa. No consumes un descanso.[/]")
                 else:
+                    # Reproducir sonido de descanso
+                    from audio_manager import play_effect
+                    import os
+                    rest_path = os.path.join(os.path.dirname(__file__), "Sound Effects", "REST-1.wav")
+                    if os.path.exists(rest_path):
+                        play_effect(rest_path)
+                    
                     antes = self.jugador.salud
                     self.jugador.salud = min(self.jugador.salud_max, self.jugador.salud + 10)
                     self.jugador.descansos += 1
@@ -339,7 +346,7 @@ class Juego:
                         play_effect(door_path)
                 
                 def play_steps():
-                    time.sleep(0.2)  # Pequeño delay para que la puerta se escuche primero
+                    time.sleep(0.05)  # Delay muy corto para solapamiento más pronunciado
                     if os.path.exists(solid_path):
                         play_effect(solid_path)
                 
