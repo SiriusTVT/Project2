@@ -1,3 +1,4 @@
+import os
 import time
 import random
 from rich.console import Console
@@ -140,6 +141,8 @@ def descanso_breve_accion(j):
     j.descansos += 1
     antes = j.salud
     j.salud = min(j.salud_max, j.salud + 10)
+    from audio_manager import play_effect
+    play_effect(os.path.join(os.path.dirname(__file__), "Sound Effects", "HEAL-1.wav"))
     c.print(f"[green]Descansas ({j.descansos}/3). Salud {antes} -> {j.salud} (+{j.salud-antes})[/]")
     return "sendero_profundo"
 

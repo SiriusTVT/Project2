@@ -92,6 +92,8 @@ def combate_personalizado(etapa: int, proxima_escena="sendero_profundo"):
                 curar = min(15, deficit)
                 jugador.salud += curar
                 heals_used += 1
+                play_effect(os.path.join(os.path.dirname(__file__), "Sound Effects", "HEAL-1.wav"))
+                time.sleep(0.5)  # Pausa para que se escuche el sonido
                 dano_rebote = random.randint(1,10)
                 jugador.salud = max(1, jugador.salud - dano_rebote)
                 skip_enemy_attack = True
@@ -207,6 +209,8 @@ def combate(jugador):
             curar = min(15, deficit)
             jugador.salud += curar
             heals_used += 1
+            play_effect(os.path.join(os.path.dirname(__file__), "Sound Effects", "HEAL-1.wav"))
+            time.sleep(0.5)  # Pausa para que se escuche el sonido
             dano_rebote = random.randint(1,10)
             jugador.salud = max(1, jugador.salud - dano_rebote)
             skip_enemy_attack = True

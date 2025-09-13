@@ -80,6 +80,7 @@ def tienda_factory(retorno: str):
                 if j.monedas >= 5:
                     j.monedas -= 5
                     j.salud = min(j.salud_max, j.salud+20)
+                    play_effect(os.path.join(os.path.dirname(__file__), "Sound Effects", "HEAL-1.wav"))
                     console.print(f"[green]Te curas. Salud: {j.salud}/{j.salud_max} (Monedas: {j.monedas})[/]")
                 else:
                     console.print("[red]Monedas insuficientes.[/]")
@@ -87,6 +88,7 @@ def tienda_factory(retorno: str):
                 if j.monedas >= 9:
                     j.monedas -= 9
                     j.salud = j.salud_max
+                    play_effect(os.path.join(os.path.dirname(__file__), "Sound Effects", "HEAL-1.wav"))
                     console.print(f"[green]Salud restaurada completamente. (Monedas: {j.monedas})[/]")
                 else:
                     console.print("[red]Monedas insuficientes.[/]")
