@@ -173,7 +173,6 @@ def stop_defeat_audio():
 
 
 def play_fight_music(volume=0.3):
-    # Música de combate deshabilitada
     return None
 
 
@@ -239,7 +238,6 @@ def stop_narration(narr_source, narr_winsound):
 
 
 def play_store_music(volume=0.25):
-    # Música de tienda deshabilitada
     return None, False
 
 
@@ -332,10 +330,8 @@ def cleanup_all_audio():
         LAST_SFX["winsound"] = False
     except Exception:
         pass
-
-    # Intentar cerrar correctamente el dispositivo/contexto de OpenAL si está en uso
     try:
-        from openal import oalQuit  # type: ignore
+        from openal import oalQuit 
         try:
             oalQuit()
         except Exception:

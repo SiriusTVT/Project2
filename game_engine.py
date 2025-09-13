@@ -278,7 +278,6 @@ class Juego:
                 if self.jugador.salud >= self.jugador.salud_max:
                     self.console.print("[dim]Tu salud ya está completa. No consumes un descanso.[/]")
                 else:
-                    # Reproducir sonido de descanso
                     from audio_manager import play_effect
                     import os
                     rest_path = os.path.join(os.path.dirname(__file__), "Sound Effects", "REST-1.wav")
@@ -338,7 +337,6 @@ class Juego:
                 door_path = os.path.join(base_dir, "Sound Effects", "OPENDOOR-1.wav")
                 solid_path = os.path.join(base_dir, "Sound Effects", "SOLIDWALK-1.wav")
                 
-                # Reproducir ambos sonidos al mismo tiempo usando threading
                 import threading
                 
                 def play_door():
@@ -346,11 +344,10 @@ class Juego:
                         play_effect(door_path)
                 
                 def play_steps():
-                    time.sleep(0.05)  # Delay muy corto para solapamiento más pronunciado
+                    time.sleep(0.05) 
                     if os.path.exists(solid_path):
                         play_effect(solid_path)
                 
-                # Iniciar ambos sonidos en threads separados
                 thread_door = threading.Thread(target=play_door)
                 thread_steps = threading.Thread(target=play_steps)
                 
@@ -482,7 +479,6 @@ class Juego:
                 if (not cruzando and not recent_cross and not chest_open_played and not recent_angel and 
                     not chest_result_played and not recent_meditation and not recent_echo):
                     base_dir = os.path.dirname(__file__)
-                    # Usar SOLIDWALK si se está buscando pistas en el interior (dentro de la cabaña)
                     if "buscar pistas en el interior" in opcion_elegida_texto.lower():
                         step_path = os.path.join(base_dir, "Sound Effects", "SOLIDWALK-1.wav")
                     else:

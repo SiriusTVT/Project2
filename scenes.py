@@ -114,7 +114,6 @@ def tienda_factory(retorno: str):
             elif elec == '6' or elec == '':
                 console.print("[dim]Abandonas la tienda.[/]")
                 stop_store_music(store_src, used_winsound_store)
-                # reanudar aventura (sin música)
                 return retorno
             else:
                 console.print("[red]Opción no válida.[/]")
