@@ -87,12 +87,6 @@ class Juego:
             siguiente = self._handle_combat_gating(siguiente)
 
             opcion_elegida_texto = self._get_selected_option_text(escena, eleccion)
-            cofres_escenas = {"cofre", "cofre_bosque", "cofre_bruma_evento", "cofre_corrupto_evento"}
-            if self.escena_actual in cofres_escenas and "abrir" in opcion_elegida_texto.lower():
-                chest_path = os.path.join(os.path.dirname(__file__), "Sound Effects", "CHEST-1.wav")
-                if os.path.exists(chest_path):
-                    play_effect(chest_path)
-                    time.sleep(0.5)
 
             self._play_narrative_sounds(opcion_elegida_texto)
 
@@ -439,13 +433,6 @@ class Juego:
         recently_echo = hasattr(self, "_last_echo_time") and (time.time() - getattr(self, "_last_echo_time")) < 2.0
         recently_crossriver = hasattr(self, "_last_crossriver_time") and (time.time() - getattr(self, "_last_crossriver_time")) < 0.6
         is_crossing = (self.escena_actual == "rio" and isinstance(opcion_elegida_texto, str) and "cruzar" in opcion_elegida_texto.lower())
-        if not chest_result_played and not recently_meditated and not recently_echo and not recently_crossriver and not is_crossing:
-            try:
-                sfx_path = os.path.join(os.path.dirname(__file__), "Sound Effects", "SELECT3-1.wav")
-                if os.path.exists(sfx_path):
-                    play_effect(sfx_path)
-            except Exception:
-                pass
 
     def _play_footstep_sounds(self, siguiente, opcion_elegida_texto, chest_open_played, chest_result_played):
         try:

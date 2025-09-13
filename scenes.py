@@ -68,13 +68,6 @@ def tienda_factory(retorno: str):
             console.print("5. Restaurar poderes especiales (2 usos) - 4 monedas")
             console.print("6. Salir de la tienda")
             elec = input("Opción (1-6): ").strip()
-            
-            try:
-                sel_path = os.path.join(os.path.dirname(__file__), "Sound Effects", "SELECT3-1.wav")
-                if os.path.exists(sel_path):
-                    play_effect(sel_path)
-            except Exception:
-                pass
                 
             if elec == '1':
                 if j.monedas >= 5:
