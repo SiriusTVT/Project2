@@ -173,82 +173,12 @@ def stop_defeat_audio():
 
 
 def play_fight_music(volume=0.3):
-    fight_path = os.path.join(os.path.dirname(__file__), "Music", "FIGHT-1.wav")
-    if os.path.exists(fight_path):
-        played = False
-        try:
-            from openal import oalOpen
-            f_src = oalOpen(fight_path)
-            if f_src is not None:
-                try:
-                    f_src.set_gain(volume)
-                except Exception:
-                    try: 
-                        f_src.gain = volume
-                    except Exception: 
-                        pass
-                f_src.play()
-                try:
-                    FIGHT_AUDIO_REF["src"] = f_src
-                    FIGHT_AUDIO_REF["winsound"] = False
-                except Exception:
-                    pass
-                played = True
-                return f_src
-        except Exception:
-            pass
-        if not played and sys.platform.startswith("win"):
-            try:
-                import winsound
-                winsound.PlaySound(fight_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
-                try:
-                    FIGHT_AUDIO_REF["src"] = None
-                    FIGHT_AUDIO_REF["winsound"] = True
-                except Exception:
-                    pass
-                played = True
-                return True
-            except Exception:
-                pass
+    # Música de combate deshabilitada
     return None
 
 
 def play_bg_music(volume=0.2):
-    adventure_path = os.path.join(os.path.dirname(__file__), "Music", "ADVENTURE-1.wav")
-    if os.path.exists(adventure_path):
-        try:
-            from openal import oalOpen
-            adv_src = oalOpen(adventure_path)
-            if adv_src is not None:
-                try:
-                    adv_src.set_gain(volume)
-                except Exception:
-                    try: 
-                        adv_src.gain = volume
-                    except Exception: 
-                        pass
-                adv_src.play()
-                try:
-                    BG_AUDIO_REF["src"] = adv_src
-                    BG_AUDIO_REF["winsound"] = False
-                except Exception:
-                    pass
-                return adv_src
-        except Exception:
-            if sys.platform.startswith("win"):
-                try:
-                    import winsound
-                    winsound.PlaySound(adventure_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
-                    try:
-                        BG_AUDIO_REF["src"] = None
-                        BG_AUDIO_REF["winsound"] = True
-                    except Exception:
-                        pass
-                    return True
-                except Exception:
-                    pass
     return None
-
 
 def play_intro_music(volume=0.2):
     audio_path = os.path.join(os.path.dirname(__file__), "Music", "INTRO-1.wav")
@@ -309,31 +239,7 @@ def stop_narration(narr_source, narr_winsound):
 
 
 def play_store_music(volume=0.25):
-    store_path = os.path.join(os.path.dirname(__file__), "Music", "STORE-1.wav")
-    if os.path.exists(store_path):
-        try:
-            from openal import oalOpen
-            store_src = oalOpen(store_path)
-            if store_src is not None:
-                try:
-                    store_src.set_gain(volume)
-                except Exception:
-                    try: 
-                        store_src.gain = volume
-                    except Exception: 
-                        pass
-                store_src.play()
-                return store_src, False
-        except Exception:
-            pass
-        
-        if sys.platform.startswith("win"):
-            try:
-                import winsound
-                winsound.PlaySound(store_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
-                return None, True
-            except Exception:
-                pass
+    # Música de tienda deshabilitada
     return None, False
 
 
