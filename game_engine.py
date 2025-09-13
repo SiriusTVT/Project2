@@ -437,7 +437,9 @@ class Juego:
     def _play_selection_sound(self, chest_result_played, opcion_elegida_texto):
         recently_meditated = hasattr(self, "_last_meditation_time") and (time.time() - getattr(self, "_last_meditation_time")) < 2.5
         recently_echo = hasattr(self, "_last_echo_time") and (time.time() - getattr(self, "_last_echo_time")) < 2.0
-        if not chest_result_played and not recently_meditated and not recently_echo:
+        recently_crossriver = hasattr(self, "_last_crossriver_time") and (time.time() - getattr(self, "_last_crossriver_time")) < 0.6
+        is_crossing = (self.escena_actual == "rio" and isinstance(opcion_elegida_texto, str) and "cruzar" in opcion_elegida_texto.lower())
+        if not chest_result_played and not recently_meditated and not recently_echo and not recently_crossriver and not is_crossing:
             try:
                 sfx_path = os.path.join(os.path.dirname(__file__), "Sound Effects", "SELECT3-1.wav")
                 if os.path.exists(sfx_path):

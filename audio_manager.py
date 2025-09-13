@@ -332,3 +332,13 @@ def cleanup_all_audio():
         LAST_SFX["winsound"] = False
     except Exception:
         pass
+
+    # Intentar cerrar correctamente el dispositivo/contexto de OpenAL si está en uso
+    try:
+        from openal import oalQuit  # type: ignore
+        try:
+            oalQuit()
+        except Exception:
+            pass
+    except Exception:
+        pass
