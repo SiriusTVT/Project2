@@ -327,6 +327,35 @@ class Juego:
                 if os.path.exists(echo_path):
                     play_effect(echo_path)
                     self._last_echo_time = time.time()
+            elif "entrar a la cabaña" in opcion_elegida_texto.lower():
+                door_path = os.path.join(base_dir, "Sound Effects", "OPENDOOR-1.wav")
+                solid_path = os.path.join(base_dir, "Sound Effects", "SOLIDWALK-1.wav")
+                
+                # Reproducir ambos sonidos al mismo tiempo usando threading
+                import threading
+                
+                def play_door():
+                    if os.path.exists(door_path):
+                        play_effect(door_path)
+                
+                def play_steps():
+                    time.sleep(0.2)  # Pequeño delay para que la puerta se escuche primero
+                    if os.path.exists(solid_path):
+                        play_effect(solid_path)
+                
+                # Iniciar ambos sonidos en threads separados
+                thread_door = threading.Thread(target=play_door)
+                thread_steps = threading.Thread(target=play_steps)
+                
+                thread_door.start()
+                thread_steps.start()
+                
+                self._last_solidwalk_time = time.time()
+            elif "buscar pistas en el interior" in opcion_elegida_texto.lower():
+                solid_path = os.path.join(base_dir, "Sound Effects", "SOLIDWALK-1.wav")
+                if os.path.exists(solid_path):
+                    play_effect(solid_path)
+                    self._last_solidwalk_time = time.time()
             elif opcion_elegida_texto.lower().startswith("seguir adelante") or opcion_elegida_texto.lower()=="seguir":
                 solid_path = os.path.join(base_dir, "Sound Effects", "SOLIDWALK-1.wav")
                 if os.path.exists(solid_path):
@@ -446,7 +475,11 @@ class Juego:
                 if (not cruzando and not recent_cross and not chest_open_played and not recent_angel and 
                     not chest_result_played and not recent_meditation and not recent_echo):
                     base_dir = os.path.dirname(__file__)
-                    step_path = os.path.join(base_dir, "Sound Effects", "FORESTWALK-1.wav") if siguiente in TERRAIN_FOREST else os.path.join(base_dir, "Sound Effects", "SOLIDWALK-1.wav")
+                    # Usar SOLIDWALK si se está buscando pistas en el interior (dentro de la cabaña)
+                    if "buscar pistas en el interior" in opcion_elegida_texto.lower():
+                        step_path = os.path.join(base_dir, "Sound Effects", "SOLIDWALK-1.wav")
+                    else:
+                        step_path = os.path.join(base_dir, "Sound Effects", "FORESTWALK-1.wav") if siguiente in TERRAIN_FOREST else os.path.join(base_dir, "Sound Effects", "SOLIDWALK-1.wav")
                     if os.path.exists(step_path):
                         play_effect(step_path)
         except Exception:
